@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+:root {
+  --background: #09070f;
+  --foreground: #fafaf9;
+  --primary-glow: rgba(6, 182, 212, 0.45);
+  --secondary-glow: rgba(168, 85, 247, 0.45);
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  font-family: "Exo 2", "Orbitron", system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom futuristic gaming scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0a1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #a855f7;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #06b6d4;
+}
+
+/* Neon glow classes */
+.neon-border-blue {
+  border: 2px solid #06b6d4;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.5), inset 0 0 6px rgba(6, 182, 212, 0.3);
+}
+
+.neon-border-purple {
+  border: 2px solid #a855f7;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.5), inset 0 0 6px rgba(168, 85, 247, 0.3);
+}
+
+.neon-text-blue {
+  color: #22d3ee;
+  text-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+}
+
+.neon-text-purple {
+  color: #c084fc;
+  text-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+}
+
+.glow-btn-blue {
+  background: linear-gradient(135deg, #0891b2, #06b6d4);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+  transition: all 0.2s ease-in-out;
+}
+.glow-btn-blue:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.7);
+  transform: translateY(-1px);
+}
+
+.glow-btn-purple {
+  background: linear-gradient(135deg, #7e22ce, #a855f7);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+  transition: all 0.2s ease-in-out;
+}
+.glow-btn-purple:hover:not(:disabled) {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.7);
+  transform: translateY(-1px);
+}
+
+/* Cybercard glass styling */
+.cyber-card {
+  background: rgba(18, 14, 30, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+}
+
+/* Grid overlay background */
+.cyber-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(168, 85, 247, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(168, 85, 247, 0.05) 1px, transparent 1px);
+  background-position: center;
+}
+
+/* Scanlines retro CRT effect */
+.scanlines {
+  position: relative;
+  overflow: hidden;
+}
+.scanlines::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  z-index: 10;
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+/* Joystick virtual visual controls */
+.joy-zone {
+  touch-action: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px dashed rgba(6, 182, 212, 0.25);
+  border-radius: 50%;
+}
+.joy-stick {
+  background: radial-gradient(circle at 35% 35%, #22d3ee, #0891b2);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+}

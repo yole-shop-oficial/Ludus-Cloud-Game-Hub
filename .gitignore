@@ -1,0 +1,30 @@
+# Dependencies
+/node_modules
+/.pnp
+/.pnp.js
+
+# Testing
+/coverage
+
+# Next.js build outputs
+/.next/
+/out/
+
+# Production build cache / states
+build/
+.next-env.d.ts
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment variables
+.env*.local
+
+# Vercel / Netlify
+.vercel
+.netlify

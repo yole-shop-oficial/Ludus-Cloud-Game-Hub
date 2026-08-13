@@ -1,0 +1,22 @@
+{
+  "name": "Ludus Cloud — Game Hub",
+  "short_name": "Ludus Cloud",
+  "description": "Plataforma modular PWA para jugar juegos arcade multijugador por WiFi local y descargar juegos de forma Offline.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09070f",
+  "theme_color": "#a855f7",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
