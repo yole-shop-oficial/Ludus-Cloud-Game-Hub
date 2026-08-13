@@ -7,82 +7,35 @@ import {
   Wifi,
   Download,
   User,
-  Settings,
   X,
   Play,
   Check,
-  Signal,
   Trash2,
   HardDrive,
   RefreshCw,
   Search,
-  Sliders,
   Volume2,
   VolumeX,
-  HelpCircle,
   Plus,
   ArrowLeft,
-  ChevronRight,
   Database
 } from 'lucide-react';
-
-// ═══════════════════════════════════════════════
-// GAME DEFS & STATIC METADATA
-// ═══════════════════════════════════════════════
-interface Game {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  icon: string;
-  image: string;
-  offlineSupport: boolean;
-  multiplayerSupport: boolean;
-  downloadSize: string;
-}
-
-const STATIC_GAMES: Game[] = [
-  {
-    id: 'pong-neo',
-    name: 'Pixel Pong Neo',
-    description: 'Un Pong retro-futurista con palas de neón y física ultra-fluida. Juega contra la IA o compite contra un amigo sincronizando tus pantallas por WiFi.',
-    category: 'arcade',
-    icon: '🏓',
-    image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80',
-    offlineSupport: true,
-    multiplayerSupport: true,
-    downloadSize: '1.2 MB'
-  },
-  {
-    id: 'cosmic-snake',
-    name: 'Cosmic Snake',
-    description: 'La clásica serpiente de vuelta con impulsos galácticos, portales estelares y estelas de neón. Súper adictivo con joysticks virtuales táctiles.',
-    category: 'arcade',
-    icon: '🐍',
-    image: 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?w=600&auto=format&fit=crop&q=80',
-    offlineSupport: true,
-    multiplayerSupport: false,
-    downloadSize: '0.8 MB'
-  },
-  {
-    id: 'meteor-storm',
-    name: 'Meteor Storm',
-    description: 'Vuela una nave de combate espacial de neón en medio de una lluvia de meteoritos y oleadas alienígenas. Destruye meteoros y acumula cristales de plasma.',
-    category: 'action',
-    icon: '🚀',
-    image: 'https://images.unsplash.com/photo-1614741118887-7a4ee193a5fa?w=600&auto=format&fit=crop&q=80',
-    offlineSupport: true,
-    multiplayerSupport: false,
-    downloadSize: '1.5 MB'
-  }
-];
+import {
+  supabase,
+  getGames,
+  createSyncSession,
+  joinSyncSession,
+  updateSessionStatus,
+  LOCAL_GAMES,
+  Game,
+  SyncSession
+} from '@/lib/supabase';
 
 const PLAYER_AVATARS = [
-  { id: 'av-1', emoji: '👽', label: 'Cosmic Ranger' },
-  { id: 'av-2', emoji: '👾', label: 'Pixel Invader' },
-  { id: 'av-3', emoji: '🤖', label: 'Cyber Mech' },
-  { id: 'av-4', emoji: '🚀', label: 'Star Pilot' },
-  { id: 'av-5', emoji: '🥷', label: 'Neon Ninja' }
+  { id: 'av-1', icon_svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-12 h-12 text-[#06b6d4]"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6 18c0-3 3-4 6-4s6 1 6 4" stroke-linecap="round"/></svg>`, label: 'Cosmic Ranger' },
+  { id: 'av-2', icon_svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-12 h-12 text-[#a855f7]"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="10" r="1.5" fill="currentColor"/><circle cx="15.5" cy="10" r="1.5" fill="currentColor"/><path d="M8 15h8" stroke-linecap="round"/></svg>`, label: 'Pixel Invader' },
+  { id: 'av-3', icon_svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-12 h-12 text-[#e5b31c]"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 16h6M8 10h.01M16 10h.01" stroke-linecap="round" stroke-width="3"/></svg>`, label: 'Cyber Mech' },
+  { id: 'av-4', icon_svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-12 h-12 text-emerald-500"><path d="M4.5 16.5c-1.5-1.5-2.5-3.5-2.5-5.5C2 6.5 6.5 2 12 2s10 4.5 10 9c0 2-1 4-2.5 5.5l-1.5-1.5c1-1 1.5-2.5 1.5-4 0-3.5-3.5-7.5-7.5-7.5S4 7 4 11c0 1.5.5 3 1.5 4l-1.5 1.5z"/><path d="M12 7l4 8H8l4-8z" fill="currentColor"/></svg>`, label: 'Star Pilot' }
 ];
 
 export default function LudusCloudGameHub() {
@@ -94,20 +47,25 @@ export default function LudusCloudGameHub() {
   const [gamerTag, setGamerTag] = useState('Gamer_Ludus');
   const [avatar, setAvatar] = useState('av-1');
   const [soundsEnabled, setSoundsEnabled] = useState(true);
-  const [supabaseConnected, setSupabaseConnected] = useState(false);
+  const [supabaseConnected, setSupabaseConnected] = useState(true);
 
-  // List of active games (can be extended with downloaded / local games)
-  const [games, setGames] = useState<Game[]>(STATIC_GAMES);
+  // Client unique ID (device tracking)
+  const [clientId, setClientId] = useState('');
+
+  // Games & installation state
+  const [games, setGames] = useState<Game[]>(LOCAL_GAMES);
   const [downloadedGameIds, setDownloadedGames] = useState<string[]>([]);
   const [downloadingGameId, setDownloadingGameId] = useState<string | null>(null);
 
-  // Sync / Peer Connection State (WebRTC WiFi Sync Simulator)
+  // Supabase Sync / Realtime state
+  const [syncSession, setSyncSession] = useState<SyncSession | null>(null);
   const [connectionRole, setConnectionRole] = useState<'none' | 'host' | 'client'>('none');
   const [pairingCode, setPairingCode] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [peerConnected, setPeerConnected] = useState(false);
   const [peerGamerTag, setPeerGamerTag] = useState('');
   const [isSearchingPeer, setIsSearchingPeer] = useState(false);
+  const [peerConnectionError, setPeerConnectionError] = useState('');
 
   // Selected game for playing
   const [playingGameId, setPlayingGameId] = useState<string | null>(null);
@@ -116,9 +74,26 @@ export default function LudusCloudGameHub() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
 
-  // Load state on mount
+  // Realtime Broadcast Channel ref for WiFi Sync State Share
+  const syncChannelRef = useRef<any>(null);
+
+  // Generate unique client ID on mount
   useEffect(() => {
-    // 1. Loading screen simulation (cosmic loading sequence)
+    let id = localStorage.getItem('ludus_client_id');
+    if (!id) {
+      id = 'client-' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('ludus_client_id', id);
+    }
+    setClientId(id);
+
+    // Load initial games from Supabase
+    async function fetchDatabaseGames() {
+      const data = await getGames();
+      setGames(data);
+    }
+    fetchDatabaseGames();
+
+    // Simulated progress loader
     const interval = setInterval(() => {
       setLoadingProgress((prev) => {
         if (prev >= 100) {
@@ -128,9 +103,9 @@ export default function LudusCloudGameHub() {
         }
         return prev + 4;
       });
-    }, 45);
+    }, 40);
 
-    // Load states from LocalStorage
+    // Local Storage loaders
     const savedTag = localStorage.getItem('ludus_gamertag');
     if (savedTag) setGamerTag(savedTag);
     const savedAvatar = localStorage.getItem('ludus_avatar');
@@ -143,7 +118,7 @@ export default function LudusCloudGameHub() {
     return () => clearInterval(interval);
   }, []);
 
-  // Play audio helper
+  // Play audio tones
   const playBeep = (freq = 440, duration = 0.1) => {
     if (!soundsEnabled || typeof window === 'undefined') return;
     try {
@@ -153,25 +128,25 @@ export default function LudusCloudGameHub() {
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
       osc.start();
       osc.stop(ctx.currentTime + duration);
-    } catch { /* ignore audio error context issues */ }
+    } catch { /* AudioContext fallback */ }
   };
 
-  // Download simulation (Modular installation)
+  // Installation simulator
   const handleDownloadGame = (gameId: string) => {
     if (downloadedGameIds.includes(gameId)) return;
     setDownloadingGameId(gameId);
-    playBeep(600, 0.15);
+    playBeep(650, 0.15);
     
     setTimeout(() => {
       const updated = [...downloadedGameIds, gameId];
       setDownloadedGames(updated);
       localStorage.setItem('ludus_downloaded_ids', JSON.stringify(updated));
       setDownloadingGameId(null);
-      playBeep(880, 0.3);
+      playBeep(900, 0.25);
     }, 2000);
   };
 
@@ -182,54 +157,138 @@ export default function LudusCloudGameHub() {
     playBeep(220, 0.2);
   };
 
-  // WiFi Peer Pairing Simulation
-  const handleCreateHost = () => {
+  // ═══════════════════════════════════════════════
+  // SUPABASE REALTIME SYNC HANDSHAKE & SIGNALING
+  // ═══════════════════════════════════════════════
+
+  // Host starts the session
+  const handleCreateHost = async () => {
     playBeep(440, 0.1);
     setConnectionRole('host');
-    const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
-    setPairingCode(randomCode);
     setIsSearchingPeer(true);
+    setPeerConnectionError('');
+
+    const session = await createSyncSession(gamerTag, clientId);
+    if (session) {
+      setSyncSession(session);
+      setPairingCode(session.code);
+
+      // Subscribe to Realtime row changes on this session to see when a client joins!
+      const channel = supabase
+        .channel(`sync-session-${session.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'ludus_sync_sessions',
+            filter: `id=eq.${session.id}`
+          },
+          async (payload: any) => {
+            const updatedSession = payload.new as SyncSession;
+            setSyncSession(updatedSession);
+
+            if (updatedSession.status === 'connecting' && updatedSession.client_name) {
+              // A client has joined the database row, let's establish realtime room sync!
+              setPeerGamerTag(updatedSession.client_name);
+              await updateSessionStatus(session.id, 'connected');
+              setPeerConnected(true);
+              setIsSearchingPeer(false);
+              playBeep(880, 0.35);
+
+              // Setup Low-latency broadcast room channel
+              setupSyncRoom(session.code);
+            }
+          }
+        )
+        .subscribe();
+    } else {
+      setConnectionRole('none');
+      setIsSearchingPeer(false);
+      setPeerConnectionError('Falla al conectar con Supabase. Verifica tu red.');
+    }
   };
 
-  const handleJoinClient = () => {
+  // Client joins the session
+  const handleJoinClient = async () => {
     if (inputCode.length !== 4) return;
     playBeep(440, 0.1);
     setConnectionRole('client');
     setIsSearchingPeer(true);
+    setPeerConnectionError('');
 
-    setTimeout(() => {
-      // Successfully "connect" to host
+    const session = await joinSyncSession(inputCode, gamerTag, clientId);
+    if (session) {
+      setSyncSession(session);
+      setPeerGamerTag(session.host_name);
       setPeerConnected(true);
-      setPeerGamerTag('Host_Vortex');
       setIsSearchingPeer(false);
-      playBeep(880, 0.4);
-    }, 1500);
+      playBeep(880, 0.35);
+
+      // Setup Low-latency broadcast room channel
+      setupSyncRoom(session.code);
+    } else {
+      setConnectionRole('none');
+      setIsSearchingPeer(false);
+      setPeerConnectionError('Código inválido o sesión de host inactiva.');
+      playBeep(200, 0.3);
+    }
   };
 
-  // Host simulated detection of joining client
-  useEffect(() => {
-    let t: NodeJS.Timeout;
-    if (connectionRole === 'host' && isSearchingPeer) {
-      t = setTimeout(() => {
-        setPeerConnected(true);
-        setPeerGamerTag('Client_Pulse');
-        setIsSearchingPeer(false);
-        playBeep(880, 0.4);
-      }, 5000); // Host finds a client in 5s
+  // Set up low-latency broadcast state sync over Supabase Realtime Channels
+  const setupSyncRoom = (code: string) => {
+    if (syncChannelRef.current) {
+      syncChannelRef.current.unsubscribe();
     }
-    return () => clearTimeout(t);
-  }, [connectionRole, isSearchingPeer]);
 
-  const disconnectSync = () => {
+    const channel = supabase.channel(`ludus-broadcast-${code}`);
+
+    channel
+      .on('broadcast', { event: 'game-state' }, (payload: any) => {
+        // Global listener: Game components will subscribe to window events to catch peer updates!
+        const event = new CustomEvent('ludus-peer-state', { detail: payload.payload });
+        window.dispatchEvent(event);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          syncChannelRef.current = channel;
+        }
+      });
+  };
+
+  const disconnectSync = async () => {
+    if (syncSession) {
+      await updateSessionStatus(syncSession.id, 'closed');
+    }
+    if (syncChannelRef.current) {
+      syncChannelRef.current.unsubscribe();
+      syncChannelRef.current = null;
+    }
     setConnectionRole('none');
     setPeerConnected(false);
     setIsSearchingPeer(false);
     setInputCode('');
     setPairingCode('');
-    playBeep(330, 0.25);
+    setSyncSession(null);
+    playBeep(300, 0.2);
   };
 
-  // Filters
+  // Global broadcast trigger that games can call
+  useEffect(() => {
+    const handleLocalBroadcast = (e: any) => {
+      if (syncChannelRef.current) {
+        syncChannelRef.current.send({
+          type: 'broadcast',
+          event: 'game-state',
+          payload: e.detail
+        });
+      }
+    };
+    window.addEventListener('ludus-local-broadcast', handleLocalBroadcast);
+    return () => window.removeEventListener('ludus-local-broadcast', handleLocalBroadcast);
+  }, []);
+
+  // Filter products/games
   const filteredGames = useMemo(() => {
     return games.filter(g => {
       const matchesSearch = g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -245,7 +304,7 @@ export default function LudusCloudGameHub() {
   return (
     <div className="relative min-h-screen cyber-grid bg-[#09070f] text-white overflow-hidden flex flex-col justify-between select-none scanlines">
       
-      {/* ─── Backdrop Ambient Lights ─── */}
+      {/* Background radial overlays */}
       <div className="absolute top-0 left-1/4 w-[50vw] h-[50vh] bg-gradient-to-b from-[#06b6d4]/10 to-transparent blur-[120px] pointer-events-none -z-10" />
       <div className="absolute bottom-0 right-1/4 w-[50vw] h-[50vh] bg-gradient-to-t from-[#a855f7]/10 to-transparent blur-[120px] pointer-events-none -z-10" />
 
@@ -262,38 +321,40 @@ export default function LudusCloudGameHub() {
             className="fixed inset-0 bg-[#09070f] z-50 flex flex-col justify-center items-center px-6"
           >
             <div className="text-center space-y-8 max-w-sm w-full">
-              {/* Spinning / Glowing pixel cloud logo assembly */}
+              {/* Spinning / Glowing cyber loader logo */}
               <motion.div
                 animate={{ rotate: 360 }}
-                transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
+                transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
                 className="relative w-28 h-28 mx-auto"
               >
                 <div className="absolute inset-0 rounded-full border-4 border-dashed border-[#06b6d4]/40" />
-                <div className="absolute inset-2 rounded-full border-4 border-[#a855f7]/40" />
-                <div className="absolute inset-0 flex items-center justify-center text-4xl">
-                  ☁️
+                <div className="absolute inset-2.5 rounded-full border-2 border-[#a855f7]/40" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-11 h-11 text-[#06b6d4] drop-shadow-[0_0_10px_#06b6d4]">
+                    <path d="M12 2a4 4 0 0 0-4 4v4H5a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3h-3V6a4 4 0 0 0-4-4z" />
+                  </svg>
                 </div>
               </motion.div>
 
-              <div className="space-y-2">
-                <h1 className="text-3xl font-black tracking-widest uppercase neon-text-blue font-mono">
+              <div className="space-y-1.5">
+                <h1 className="text-2xl font-black tracking-widest uppercase neon-text-blue font-mono">
                   Ludus Cloud
                 </h1>
-                <p className="text-[10px] uppercase font-bold text-stone-500 tracking-[0.25em]">
-                  Next-Gen Mobile Game Hub
+                <p className="text-[9px] uppercase font-bold text-stone-500 tracking-[0.25em]">
+                  Realtime Offline-First Hub
                 </p>
               </div>
 
               {/* Glowing animated progress bar */}
               <div className="space-y-2">
-                <div className="w-full h-2.5 rounded-full bg-stone-900 border border-[#a855f7]/20 p-0.5 overflow-hidden">
+                <div className="w-full h-2 rounded-full bg-stone-900 border border-[#a855f7]/15 p-0.5 overflow-hidden">
                   <motion.div
                     className="h-full rounded-full bg-gradient-to-r from-[#06b6d4] to-[#a855f7]"
                     style={{ width: `${loadingProgress}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-[10px] text-stone-500 font-mono font-bold">
-                  <span>LOADING CORES...</span>
+                <div className="flex justify-between text-[9px] text-stone-500 font-mono font-bold tracking-wider">
+                  <span>BOOTING CORES...</span>
                   <span>{loadingProgress}%</span>
                 </div>
               </div>
@@ -311,66 +372,72 @@ export default function LudusCloudGameHub() {
             animate={{ opacity: 1, y: 0 }}
             className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 space-y-6 pb-24"
           >
-            {/* Header / Brand */}
+            {/* Header */}
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <span className="text-2xl">☁️</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-8 h-8 text-[#06b6d4]">
+                  <path d="M12 2a4 4 0 0 0-4 4v4H5a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3h-3V6a4 4 0 0 0-4-4z" />
+                </svg>
                 <div>
-                  <h1 className="text-md font-black tracking-widest uppercase leading-none neon-text-blue">
+                  <h1 className="text-sm font-black tracking-widest uppercase leading-none neon-text-blue">
                     Ludus Cloud
                   </h1>
                   <p className="text-[8px] font-bold text-[#a855f7] tracking-widest uppercase mt-0.5">Game Hub</p>
                 </div>
               </div>
 
-              {/* Mini user bar */}
+              {/* Profile button */}
               <button
                 onClick={() => { playBeep(); setActiveScreen('profile'); }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full cyber-card border border-stone-800"
               >
-                <span className="text-sm">{activeAvatarObj.emoji}</span>
+                <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-5 h-5" />
                 <span className="text-xs font-bold font-mono tracking-tight max-w-[80px] truncate">{gamerTag}</span>
               </button>
             </div>
 
-            {/* Quick Status Bar */}
+            {/* Hub Quick Stats */}
             <div className="grid grid-cols-2 gap-2">
               <div className="cyber-card rounded-2xl p-3 flex items-center justify-between gap-3 border border-stone-800">
-                <div className="flex items-center gap-2">
-                  <Wifi className="w-4 h-4 text-[#06b6d4]" />
-                  <div>
-                    <p className="text-[10px] text-stone-500 font-bold uppercase">Multijugador local</p>
-                    <p className="text-xs font-black">
-                      {peerConnected ? `Conectado a ${peerGamerTag}` : 'No conectado'}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-[#06b6d4]/10 border border-[#06b6d4]/30 flex items-center justify-center shrink-0">
+                    <Wifi className="w-4 h-4 text-[#06b6d4]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[8px] text-stone-500 font-bold uppercase tracking-wide">WiFi local Sync</p>
+                    <p className="text-xs font-black truncate">
+                      {peerConnected ? peerGamerTag : 'Desconectado'}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => { playBeep(); setActiveScreen('wifi'); }}
-                  className="px-3 py-1 rounded-lg bg-stone-900 text-[10px] font-bold border border-stone-800 hover:border-[#06b6d4]"
+                  className="px-2.5 py-1 rounded-lg bg-stone-900 text-[9px] font-bold border border-stone-800 hover:border-[#06b6d4] shrink-0"
                 >
-                  Configurar
+                  Sync
                 </button>
               </div>
 
               <div className="cyber-card rounded-2xl p-3 flex items-center justify-between gap-3 border border-stone-800">
-                <div className="flex items-center gap-2">
-                  <Download className="w-4 h-4 text-[#a855f7]" />
-                  <div>
-                    <p className="text-[10px] text-stone-500 font-bold uppercase">Juegos Instalados</p>
-                    <p className="text-xs font-black">{downloadedGameIds.length} descargado(s)</p>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-[#a855f7]/10 border border-[#a855f7]/30 flex items-center justify-center shrink-0">
+                    <Download className="w-4 h-4 text-[#a855f7]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[8px] text-stone-500 font-bold uppercase tracking-wide">Juegos Offline</p>
+                    <p className="text-xs font-black truncate">{downloadedGameIds.length} guardado(s)</p>
                   </div>
                 </div>
                 <button
                   onClick={() => { playBeep(); setActiveScreen('downloads'); }}
-                  className="px-3 py-1 rounded-lg bg-stone-900 text-[10px] font-bold border border-stone-800 hover:border-[#a855f7]"
+                  className="px-2.5 py-1 rounded-lg bg-stone-900 text-[9px] font-bold border border-stone-800 hover:border-[#a855f7] shrink-0"
                 >
-                  Descargas
+                  Manejar
                 </button>
               </div>
             </div>
 
-            {/* Search Engine & Filters */}
+            {/* Search and Filters */}
             <div className="space-y-3">
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
@@ -378,7 +445,7 @@ export default function LudusCloudGameHub() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar juegos en la nube..."
+                  placeholder="Buscar juegos en Supabase..."
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-stone-950/80 border border-stone-900 focus:border-[#06b6d4] focus:outline-none text-xs font-bold"
                 />
               </div>
@@ -386,17 +453,17 @@ export default function LudusCloudGameHub() {
               {/* Filters chips */}
               <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {[
-                  { id: 'all', label: 'Todos los juegos 🎮' },
-                  { id: 'arcade', label: 'Arcade Retro 🕹️' },
-                  { id: 'action', label: 'Acción / Espacio 🚀' },
-                  { id: 'offline', label: 'Guardados Offline 💾' }
+                  { id: 'all', label: 'Todos' },
+                  { id: 'arcade', label: 'Arcade' },
+                  { id: 'action', label: 'Acción' },
+                  { id: 'offline', label: 'Offline' }
                 ].map(filter => (
                   <button
                     key={filter.id}
                     onClick={() => { playBeep(520, 0.08); setActiveFilter(filter.id); }}
                     className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black tracking-wide uppercase transition-all ${
                       activeFilter === filter.id
-                        ? 'glow-btn-purple text-white'
+                        ? 'glow-btn-purple text-white shadow-lg'
                         : 'bg-stone-900 border border-stone-800 text-stone-400'
                     }`}
                   >
@@ -406,9 +473,9 @@ export default function LudusCloudGameHub() {
               </div>
             </div>
 
-            {/* Game Grid */}
+            {/* Game Grid display */}
             <div className="space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-stone-500">Catálogo de juegos</h3>
+              <h3 className="text-xs font-black uppercase tracking-wider text-stone-500">Catálogo modular</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredGames.map((g) => {
                   const isDownloaded = downloadedGameIds.includes(g.id);
@@ -422,40 +489,41 @@ export default function LudusCloudGameHub() {
                       {/* Image header */}
                       <div className="relative h-32 bg-stone-900">
                         <img
-                          src={g.image}
+                          src={g.image_url}
                           alt={g.name}
-                          className="w-full h-full object-cover opacity-80"
+                          className="w-full h-full object-cover opacity-85"
                         />
-                        <span className="absolute top-2.5 left-2.5 bg-black/70 px-2 py-1 rounded-md text-[10px] font-bold">
-                          {g.icon} {g.category.toUpperCase()}
+                        <span className="absolute top-2.5 left-2.5 bg-black/80 border border-stone-800 px-2.5 py-1 rounded-md text-[9px] font-bold flex items-center gap-1.5">
+                          <span dangerouslySetInnerHTML={{ __html: g.icon_svg }} className="w-3.5 h-3.5" />
+                          <span>{g.category.toUpperCase()}</span>
                         </span>
                       </div>
 
-                      {/* Info & action */}
-                      <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                      {/* Info block */}
+                      <div className="p-4 space-y-3.5 flex-1 flex flex-col justify-between">
                         <div className="space-y-1">
                           <h4 className="font-extrabold text-sm tracking-tight">{g.name}</h4>
-                          <p className="text-[10px] text-stone-400 leading-relaxed font-medium">
+                          <p className="text-[10px] text-stone-400 leading-relaxed font-medium line-clamp-3">
                             {g.description}
                           </p>
                         </div>
 
-                        {/* Badges / Support */}
+                        {/* Badges */}
                         <div className="flex gap-2 text-[9px] font-bold text-stone-500">
-                          {g.offlineSupport && <span className="text-emerald-500">✓ Offline</span>}
-                          {g.multiplayerSupport && <span className="text-cyan-500">✓ WiFi Sync VS</span>}
-                          <span className="ml-auto text-stone-600">{g.downloadSize}</span>
+                          {g.offline_support && <span className="text-emerald-500">✓ Offline</span>}
+                          {g.multiplayer_support && <span className="text-cyan-500">✓ WiFi Sync VS</span>}
+                          <span className="ml-auto text-stone-600 font-mono">{g.download_size}</span>
                         </div>
 
-                        {/* Action triggers */}
-                        <div className="pt-2 flex gap-2">
+                        {/* Trigger button */}
+                        <div className="pt-1 flex gap-2">
                           <button
                             onClick={() => {
                               playBeep(520, 0.1);
                               setPlayingGameId(g.id);
                               setActiveScreen('game');
                             }}
-                            className="flex-1 py-2 rounded-xl glow-btn-blue text-white text-xs font-extrabold flex items-center justify-center gap-1.5"
+                            className="flex-1 py-2.5 rounded-xl glow-btn-blue text-white text-xs font-extrabold flex items-center justify-center gap-1.5"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
                             Jugar Ahora
@@ -465,8 +533,8 @@ export default function LudusCloudGameHub() {
                             <button
                               onClick={() => handleDownloadGame(g.id)}
                               disabled={isDownloading}
-                              className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-stone-400 font-bold hover:text-white hover:border-[#a855f7] flex items-center justify-center disabled:opacity-50"
-                              title="Descargar para Offline"
+                              className="px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-800 text-stone-400 font-bold hover:text-white hover:border-[#a855f7] flex items-center justify-center disabled:opacity-50"
+                              title="Instalar en local"
                             >
                               {isDownloading ? (
                                 <RefreshCw className="w-4 h-4 animate-spin text-[#a855f7]" />
@@ -477,8 +545,8 @@ export default function LudusCloudGameHub() {
                           ) : (
                             <button
                               onClick={() => handleDeleteGame(g.id)}
-                              className="px-3 py-2 rounded-xl bg-red-950/20 border border-red-900/30 text-red-500 font-bold flex items-center justify-center"
-                              title="Eliminar descarga"
+                              className="px-3.5 py-2.5 rounded-xl bg-red-950/20 border border-red-900/30 text-red-500 font-bold flex items-center justify-center"
+                              title="Desinstalar"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -494,7 +562,7 @@ export default function LudusCloudGameHub() {
         )}
 
         {/* ═══════════════════════════════════════════════
-           SCREEN 3: CONEXIÓN WIFI (PEER SYNC)
+           SCREEN 3: CONEXIÓN WIFI (SUPABASE REPLICATOR)
            ═══════════════════════════════════════════════ */}
         {activeScreen === 'wifi' && (
           <motion.div
@@ -512,12 +580,12 @@ export default function LudusCloudGameHub() {
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
-                <h2 className="text-md font-black uppercase tracking-wider neon-text-blue">Conexión WiFi Local</h2>
-                <p className="text-[9px] text-stone-500 font-bold uppercase tracking-widest">Sincroniza pantallas por WiFi</p>
+                <h2 className="text-md font-black uppercase tracking-wider neon-text-blue">Conexión WiFi Sync</h2>
+                <p className="text-[9px] text-stone-500 font-bold uppercase tracking-widest">Sincronizador Directo</p>
               </div>
             </div>
 
-            {/* Connection visual box */}
+            {/* Connection board */}
             <div className="cyber-card rounded-[28px] p-5 border border-stone-800 text-center space-y-5">
               <div className="w-14 h-14 rounded-full bg-[#06b6d4]/10 border border-[#06b6d4]/30 flex items-center justify-center mx-auto text-2xl">
                 <Wifi className="w-7 h-7 text-[#06b6d4] animate-pulse" />
@@ -526,7 +594,7 @@ export default function LudusCloudGameHub() {
               <div className="space-y-1">
                 <h3 className="font-extrabold text-sm">Emparejamiento WiFi Directo (P2P)</h3>
                 <p className="text-[10px] text-stone-400 max-w-xs mx-auto leading-relaxed">
-                  Para jugar multijugador local en la misma WiFi, un jugador debe **Crear Sesión** y compartir el código, y el otro debe **Unirse**.
+                  Sincroniza tus pantallas en tiempo real conectándote a otro jugador por Supabase Realtime Low-Latency Broadcaster.
                 </p>
               </div>
 
@@ -561,10 +629,14 @@ export default function LudusCloudGameHub() {
                       Unirse
                     </button>
                   </div>
+
+                  {peerConnectionError && (
+                    <p className="text-xs text-red-500 font-bold pl-1 pt-1">⚠️ {peerConnectionError}</p>
+                  )}
                 </div>
               )}
 
-              {/* HOST SCREEN: LISTENING */}
+              {/* HOST LISTENING */}
               {connectionRole === 'host' && !peerConnected && (
                 <div className="space-y-4 py-3">
                   <div className="space-y-1 bg-stone-950 py-3 rounded-2xl border border-stone-900">
@@ -574,7 +646,7 @@ export default function LudusCloudGameHub() {
                   
                   <div className="flex justify-center items-center gap-2 text-xs text-[#a855f7]">
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span className="font-extrabold animate-pulse">Esperando a que el peer se conecte...</span>
+                    <span className="font-extrabold animate-pulse">Esperando conexión de peer en Supabase...</span>
                   </div>
 
                   <button
@@ -586,27 +658,27 @@ export default function LudusCloudGameHub() {
                 </div>
               )}
 
-              {/* CLIENT SCREEN: CONNECTING */}
+              {/* CLIENT CONNECTING */}
               {connectionRole === 'client' && isSearchingPeer && (
                 <div className="space-y-4 py-6 text-center">
                   <RefreshCw className="w-8 h-8 animate-spin text-[#06b6d4] mx-auto" />
-                  <p className="text-xs font-bold animate-pulse text-stone-400">Estableciendo canal WebRTC directo...</p>
+                  <p className="text-xs font-bold animate-pulse text-stone-400">Handshake de Supabase en proceso...</p>
                 </div>
               )}
 
-              {/* SUCCESSFULLY CONNECTED SCREEN */}
+              {/* CONNECTED STATUS */}
               {peerConnected && (
                 <div className="space-y-4 py-3">
                   <div className="bg-emerald-950/20 border border-emerald-900/40 py-3 px-4 rounded-2xl flex items-center justify-center gap-3">
                     <Check className="w-5 h-5 text-emerald-500" />
                     <div className="text-left">
-                      <p className="text-[10px] text-stone-500 font-mono font-bold uppercase">Pairing Activo</p>
-                      <p className="text-xs font-black">Sincronizado con {peerGamerTag}</p>
+                      <p className="text-[10px] text-stone-500 font-mono font-bold uppercase">Sync Activa</p>
+                      <p className="text-xs font-black">Conectado con: {peerGamerTag}</p>
                     </div>
                   </div>
 
                   <div className="text-xs text-stone-400 py-1">
-                    🟢 Ping estimado WiFi local: <span className="font-mono font-bold text-emerald-400">4ms</span>
+                    🟢 Ping Supabase Realtime: <span className="font-mono font-bold text-emerald-400">12ms (WiFi)</span>
                   </div>
 
                   <button
@@ -646,27 +718,26 @@ export default function LudusCloudGameHub() {
               </div>
             </div>
 
-            {/* Profile Detail Box */}
+            {/* Profile detail box */}
             <div className="cyber-card rounded-[28px] p-5 border border-stone-800 space-y-5">
               
-              {/* Avatar select */}
+              {/* Avatar pick */}
               <div className="text-center space-y-2">
-                <p className="text-5xl py-2">{activeAvatarObj.emoji}</p>
-                <p className="text-xs text-stone-500 font-bold uppercase">Selecciona tu Avatar</p>
+                <div dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-14 h-14 mx-auto flex items-center justify-center p-1 border border-stone-800 rounded-2xl" />
+                <p className="text-xs text-stone-500 font-bold uppercase tracking-wider">Cambia tu Avatar</p>
                 
                 <div className="flex justify-center gap-2 pt-1">
                   {PLAYER_AVATARS.map((av) => (
                     <button
                       key={av.id}
                       onClick={() => { playBeep(520, 0.08); setAvatar(av.id); }}
-                      className={`w-10 h-10 rounded-xl bg-stone-900 text-lg flex items-center justify-center border transition-all ${
+                      className={`w-11 h-11 rounded-xl bg-stone-900 text-lg flex items-center justify-center border transition-all ${
                         avatar === av.id
                           ? 'border-[#06b6d4] shadow-md shadow-[#06b6d4]/10 scale-105'
                           : 'border-stone-800'
                       }`}
-                    >
-                      {av.emoji}
-                    </button>
+                      dangerouslySetInnerHTML={{ __html: av.icon_svg }}
+                    />
                   ))}
                 </div>
               </div>
@@ -685,11 +756,11 @@ export default function LudusCloudGameHub() {
                 />
               </div>
 
-              {/* Audio switches */}
+              {/* Sound switch */}
               <div className="flex items-center justify-between py-2 border-t border-stone-900">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 text-xs font-bold">
                   {soundsEnabled ? <Volume2 className="w-4 h-4 text-[#06b6d4]" /> : <VolumeX className="w-4 h-4 text-stone-500" />}
-                  <span className="text-xs font-bold">Efectos de Sonido Retro</span>
+                  <span>Efectos de Sonido</span>
                 </div>
                 <button
                   onClick={() => {
@@ -782,13 +853,11 @@ export default function LudusCloudGameHub() {
                   className="cyber-card rounded-[20px] p-3 flex items-center justify-between gap-3 border border-stone-900"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-2xl bg-stone-900 w-11 h-11 rounded-xl flex items-center justify-center">
-                      {p.icon}
-                    </span>
+                    <span dangerouslySetInnerHTML={{ __html: p.icon_svg }} className="bg-stone-900 w-11 h-11 rounded-xl flex items-center justify-center shrink-0" />
                     <div className="min-w-0">
                       <h4 className="text-sm font-extrabold truncate">{p.name}</h4>
                       <p className="text-[9px] text-stone-500 font-bold uppercase">
-                        Peso: {p.downloadSize} · Listo para Offline
+                        Peso: {p.download_size} · Listo para Offline
                       </p>
                     </div>
                   </div>
@@ -839,8 +908,8 @@ export default function LudusCloudGameHub() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black z-40 flex flex-col justify-between"
           >
-            {/* Game Screen Header Overlay */}
-            <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-center z-50">
+            {/* Game Header Overlay */}
+            <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/85 to-transparent flex justify-between items-center z-50">
               <button
                 onClick={() => {
                   playBeep(220, 0.15);
@@ -853,18 +922,18 @@ export default function LudusCloudGameHub() {
               </button>
 
               <div className="flex items-center gap-2">
-                <span className="text-sm font-mono font-black tracking-wider uppercase bg-[#a855f7]/30 border border-[#a855f7]/40 px-3 py-1 rounded-full text-white">
+                <span className="text-xs font-mono font-black tracking-wider uppercase bg-[#a855f7]/25 border border-[#a855f7]/30 px-3.5 py-1 rounded-full text-white">
                   {playingGameId === 'pong-neo' ? '🏓 Pong Neo' : playingGameId === 'cosmic-snake' ? '🐍 Snake' : '🚀 Meteor Storm'}
                 </span>
                 {peerConnected && playingGameId === 'pong-neo' && (
-                  <span className="text-[10px] font-bold bg-[#06b6d4] px-2.5 py-1 rounded-full text-stone-950 animate-pulse uppercase">
-                    👥 WiFi Sync VS
+                  <span className="text-[9px] font-bold bg-[#06b6d4] px-2.5 py-1 rounded-full text-stone-950 animate-pulse uppercase">
+                    👥 WiFi Sync
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Game Canvas Container */}
+            {/* Game Canvas Box */}
             <div className="flex-1 w-full flex items-center justify-center relative bg-stone-950 overflow-hidden select-none">
               
               {/* PONG NEO GAME */}
@@ -888,10 +957,10 @@ export default function LudusCloudGameHub() {
 
       </AnimatePresence>
 
-      {/* ─── Immersive Floating Bottom Navigation (Hub Mode) ─── */}
+      {/* ─── Bottom Navigation bar ─── */}
       {activeScreen !== 'loading' && activeScreen !== 'game' && (
         <div className="fixed bottom-0 left-0 right-0 z-30 p-4 pointer-events-none">
-          <div className="max-w-md mx-auto rounded-[24px] bg-[#120e1e]/80 backdrop-filter blur-md border border-[#a855f7]/15 p-2 flex justify-around items-center pointer-events-auto shadow-2xl">
+          <div className="max-w-md mx-auto rounded-[24px] bg-[#120e1e]/85 backdrop-filter blur-md border border-[#a855f7]/15 p-2 flex justify-around items-center pointer-events-auto shadow-2xl">
             {[
               { id: 'hub', label: 'Catálogo', icon: Gamepad2 },
               { id: 'wifi', label: 'WiFi Sync', icon: Wifi },
@@ -930,11 +999,11 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
   peerConnected: boolean; peerGamerTag: string; soundsEnabled: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  // Players and ball coordinates
   const [p1Score, setP1Score] = useState(0);
   const [p2Score, setP2Score] = useState(0);
-  const [gameOver, setGameOver] = useState(false);
+
+  // Reference for real-time peer state sending
+  const lastSentYRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -960,14 +1029,17 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
     let localScore1 = 0;
     let localScore2 = 0;
 
-    let touchY = height / 2;
-
-    // Handle touch/mouse position
     const handleMove = (y: number) => {
       p1Y = y - paddleHeight / 2;
-      // Clamp p1Y
       if (p1Y < 0) p1Y = 0;
       if (p1Y > height - paddleHeight) p1Y = height - paddleHeight;
+
+      // Broadcast position to peer over Supabase Realtime Room!
+      if (peerConnected && Math.abs(p1Y - lastSentYRef.current) > 2) {
+        lastSentYRef.current = p1Y;
+        const event = new CustomEvent('ludus-local-broadcast', { detail: { p1Y: p1Y / height, score1: localScore1, score2: localScore2 } });
+        window.dispatchEvent(event);
+      }
     };
 
     const onTouch = (e: TouchEvent) => {
@@ -982,17 +1054,25 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
       handleMove(clientY);
     };
 
+    // Receive broadcast updates from peer!
+    const handlePeerUpdate = (e: any) => {
+      if (e.detail && e.detail.p1Y !== undefined) {
+        // Since we are P1, Peer's P1 is our P2!
+        p2Y = e.detail.p1Y * height;
+      }
+    };
+
     canvas.addEventListener('touchmove', onTouch, { passive: true });
     canvas.addEventListener('mousemove', onMouse);
+    window.addEventListener('ludus-peer-state', handlePeerUpdate);
 
     let frameId: number;
 
     const gameLoop = () => {
-      // Background clear
       ctx.fillStyle = '#09070f';
       ctx.fillRect(0, 0, width, height);
 
-      // Draw dashed central line
+      // Central dashed line
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.setLineDash([5, 10]);
       ctx.lineWidth = 2;
@@ -1001,26 +1081,18 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
       ctx.lineTo(width / 2, height);
       ctx.stroke();
 
-      // AI movement (If not WebRTC peer VS connected)
+      // AI/Peer Chaser logic
       if (!peerConnected) {
-        // AI chases ball with slight lag
         const targetY = ballY - paddleHeight / 2;
         p2Y += (targetY - p2Y) * 0.12;
-      } else {
-        // Simulated WebRTC Peer movement mirroring
-        const targetY = ballY - paddleHeight / 2;
-        p2Y += (targetY - p2Y) * 0.35; // Instant/faster sync response
       }
 
-      // Clamp AI / Peer Paddle
       if (p2Y < 0) p2Y = 0;
       if (p2Y > height - paddleHeight) p2Y = height - paddleHeight;
 
-      // Ball Physics
       ballX += ballSpeedX;
       ballY += ballSpeedY;
 
-      // Wall bounce Y
       if (ballY - ballRadius < 0) {
         ballY = ballRadius;
         ballSpeedY = -ballSpeedY;
@@ -1030,25 +1102,23 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
         ballSpeedY = -ballSpeedY;
       }
 
-      // Paddle P1 bounce (Left)
+      // Left paddle bounce
       if (ballX - ballRadius < paddleWidth && ballY > p1Y && ballY < p1Y + paddleHeight) {
         ballSpeedX = -ballSpeedX;
         ballX = paddleWidth + ballRadius;
-        // Increase speed slightly
         ballSpeedX *= 1.05;
         ballSpeedY = (ballY - (p1Y + paddleHeight / 2)) * 0.15;
       }
 
-      // Paddle P2 bounce (Right)
+      // Right paddle bounce
       if (ballX + ballRadius > width - paddleWidth && ballY > p2Y && ballY < p2Y + paddleHeight) {
         ballSpeedX = -ballSpeedX;
         ballX = width - paddleWidth - ballRadius;
-        // Increase speed slightly
         ballSpeedX *= 1.05;
         ballSpeedY = (ballY - (p2Y + paddleHeight / 2)) * 0.15;
       }
 
-      // Goal detection Left (AI scores)
+      // Goal Left
       if (ballX < 0) {
         localScore2++;
         setP2Score(localScore2);
@@ -1058,7 +1128,7 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
         ballSpeedY = (Math.random() * 2 - 1) * 3;
       }
 
-      // Goal detection Right (P1 scores)
+      // Goal Right
       if (ballX > width) {
         localScore1++;
         setP1Score(localScore1);
@@ -1068,25 +1138,24 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
         ballSpeedY = (Math.random() * 2 - 1) * 3;
       }
 
-      // Draw P1 (Left - Blue neon)
+      // Draw P1
       ctx.fillStyle = '#06b6d4';
       ctx.shadowBlur = 15;
       ctx.shadowColor = '#06b6d4';
       ctx.fillRect(0, p1Y, paddleWidth, paddleHeight);
 
-      // Draw P2 (Right - Purple neon)
+      // Draw P2
       ctx.fillStyle = '#a855f7';
       ctx.shadowColor = '#a855f7';
       ctx.fillRect(width - paddleWidth, p2Y, paddleWidth, paddleHeight);
 
-      // Draw Ball (Glowing Neon gold)
+      // Draw Ball
       ctx.fillStyle = '#e5b31c';
       ctx.shadowColor = '#e5b31c';
       ctx.beginPath();
       ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Reset shadows
       ctx.shadowBlur = 0;
 
       frameId = requestAnimationFrame(gameLoop);
@@ -1098,13 +1167,14 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
       cancelAnimationFrame(frameId);
       canvas.removeEventListener('touchmove', onTouch);
       canvas.removeEventListener('mousemove', onMouse);
+      window.removeEventListener('ludus-peer-state', handlePeerUpdate);
     };
   }, [peerConnected]);
 
   return (
     <div className="w-full h-full max-w-xl max-h-[80vh] flex flex-col justify-center items-center px-4 space-y-4">
       
-      {/* Score and players */}
+      {/* Score */}
       <div className="flex justify-between w-full font-mono text-xs font-black tracking-widest text-[#06b6d4]">
         <div>
           <p>PLAYER (TÚ)</p>
@@ -1116,13 +1186,12 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
         </div>
       </div>
 
-      {/* Main gaming arena */}
       <div className="w-full h-96 relative border border-stone-800 rounded-[28px] overflow-hidden">
         <canvas ref={canvasRef} className="w-full h-full cursor-none" />
       </div>
 
-      <p className="text-[10px] text-stone-500 text-center font-bold uppercase tracking-wider">
-        Desliza el dedo o el mouse en la pantalla para mover tu pala de neón ☁️
+      <p className="text-[9px] text-stone-500 text-center font-bold uppercase tracking-wider">
+        Desliza en la pantalla para mover tu pala de neón cian.
       </p>
     </div>
   );
@@ -1168,7 +1237,6 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
     let intervalId = setInterval(() => {
       if (localGameOver) return;
 
-      // Update snake positions
       const head = { ...snake[0] };
       const dir = directionRef.current;
 
@@ -1177,13 +1245,11 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
       if (dir === 'LEFT') head.x -= grid;
       if (dir === 'RIGHT') head.x += grid;
 
-      // Wall collision (screen wrap)
       if (head.x < 0) head.x = size - grid;
       if (head.x >= size) head.x = 0;
       if (head.y < 0) head.y = size - grid;
       if (head.y >= size) head.y = 0;
 
-      // Self collision
       if (snake.some(s => s.x === head.x && s.y === head.y)) {
         localGameOver = true;
         setGameOver(true);
@@ -1192,7 +1258,6 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
 
       snake.unshift(head);
 
-      // Apple collision
       if (head.x === apple.x && head.y === apple.y) {
         currentScore += 10;
         setScore(currentScore);
@@ -1202,11 +1267,9 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         snake.pop();
       }
 
-      // Drawing
       ctx.fillStyle = '#09070f';
       ctx.fillRect(0, 0, size, size);
 
-      // Draw Grid lines slightly
       ctx.strokeStyle = 'rgba(168, 85, 247, 0.05)';
       ctx.lineWidth = 1;
       for (let i = 0; i < size; i += grid) {
@@ -1218,17 +1281,15 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         ctx.stroke();
       }
 
-      // Apple (Neon golden core)
+      // Golden apple
       ctx.fillStyle = '#e5b31c';
       ctx.shadowBlur = 10;
       ctx.shadowColor = '#e5b31c';
       ctx.fillRect(apple.x + 2, apple.y + 2, grid - 4, grid - 4);
 
-      // Snake (Purple neon)
-      ctx.fillStyle = '#a855f7';
-      ctx.shadowColor = '#a855f7';
+      // Snake body/head
       snake.forEach((s, idx) => {
-        ctx.fillStyle = idx === 0 ? '#06b6d4' : '#a855f7'; // Cyan head
+        ctx.fillStyle = idx === 0 ? '#06b6d4' : '#a855f7';
         ctx.fillRect(s.x + 1, s.y + 1, grid - 2, grid - 2);
       });
 
@@ -1260,7 +1321,6 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         <span>HIGHSCORE: <span className="text-[#06b6d4] text-lg font-black">{highScore}</span></span>
       </div>
 
-      {/* Main Canvas box */}
       <div className="relative border-2 border-stone-800 rounded-[28px] overflow-hidden aspect-square w-full max-w-[300px]">
         <canvas ref={canvasRef} className="w-full h-full" />
         
@@ -1277,7 +1337,7 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         )}
       </div>
 
-      {/* Immersive retro Virtual D-PAD controller */}
+      {/* D-PAD controller with custom SVGs */}
       <div className="w-full max-w-[200px] flex flex-col items-center gap-1 py-1">
         <button
           onClick={() => handleArrow('UP')}
@@ -1362,33 +1422,28 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
     const gameLoop = () => {
       if (localGameOver) return;
 
-      // Background
       ctx.fillStyle = '#09070f';
       ctx.fillRect(0, 0, width, height);
 
-      // Star particles simulating deep speed
+      // Stars
       ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
       for (let i = 0; i < 6; i++) {
         ctx.fillRect(Math.random() * width, Math.random() * height, 1.5, 1.5);
       }
 
-      // Ship controls
       const keys = keysPressedRef.current;
       if (keys.left) shipX -= 3.5;
       if (keys.right) shipX += 3.5;
 
-      // Clamping shipX
       if (shipX < shipWidth) shipX = shipWidth;
       if (shipX > width - shipWidth) shipX = width - shipWidth;
 
-      // Shoot trigger
       if (keys.shoot && shootCooldown <= 0) {
         lasers.push({ x: shipX, y: shipY - 10 });
-        shootCooldown = 15; // 15 frames cooldown
+        shootCooldown = 15;
       }
       if (shootCooldown > 0) shootCooldown--;
 
-      // Update and draw lasers (glowing cyan beams)
       lasers.forEach((l, idx) => {
         l.y -= 5.5;
         if (l.y < 0) lasers.splice(idx, 1);
@@ -1399,18 +1454,15 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         ctx.fillRect(l.x - 1.5, l.y, 3, 10);
       });
 
-      // Spawn meteors
       if (nextMeteorFrame <= 0) {
         spawnMeteor();
-        nextMeteorFrame = 35 + Math.random() * 30; // spawn cooldown frames
+        nextMeteorFrame = 35 + Math.random() * 30;
       }
       nextMeteorFrame--;
 
-      // Update & draw meteors (neon purple stones)
       meteors.forEach((m, mIdx) => {
         m.y += m.speed;
         
-        // Ship collision
         const dist = Math.hypot(m.x - shipX, m.y - shipY);
         if (dist < m.size + shipWidth/2) {
           localGameOver = true;
@@ -1418,16 +1470,13 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
           return;
         }
 
-        // Out of boundary
         if (m.y > height + m.size) {
           meteors.splice(mIdx, 1);
         }
 
-        // Laser collisions
         lasers.forEach((l, lIdx) => {
           const lDist = Math.hypot(m.x - l.x, m.y - l.y);
           if (lDist < m.size) {
-            // Explode!
             currentScore += 15;
             setScore(currentScore);
             if (currentScore > highScore) setHighScore(currentScore);
@@ -1436,7 +1485,6 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
           }
         });
 
-        // Draw meteor stone
         ctx.fillStyle = '#a855f7';
         ctx.shadowBlur = 10;
         ctx.shadowColor = '#a855f7';
@@ -1445,7 +1493,7 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         ctx.fill();
       });
 
-      // Draw Ship (Neon golden retro spacecraft)
+      // Spaceship
       ctx.fillStyle = '#e5b31c';
       ctx.shadowColor = '#e5b31c';
       ctx.shadowBlur = 12;
@@ -1456,7 +1504,6 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
       ctx.closePath();
       ctx.fill();
 
-      // Reset shadows
       ctx.shadowBlur = 0;
 
       frameId = requestAnimationFrame(gameLoop);
@@ -1485,7 +1532,6 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         <span>HIGHSCORE: <span className="text-[#06b6d4] text-lg font-black">{highScore}</span></span>
       </div>
 
-      {/* Screen container */}
       <div className="relative border-2 border-stone-800 rounded-[28px] overflow-hidden w-full max-w-[300px] h-[360px]">
         <canvas ref={canvasRef} className="w-full h-full" />
         
@@ -1502,7 +1548,6 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
         )}
       </div>
 
-      {/* Control panel buttons */}
       <div className="w-full max-w-[280px] flex justify-between items-center py-2">
         <div className="flex gap-2.5">
           <button
