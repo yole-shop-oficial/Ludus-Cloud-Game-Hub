@@ -379,9 +379,11 @@ export default function LudusCloudGameHub() {
         )
         .subscribe();
     } else {
+      // FIX: DO NOT dismiss the modal! Set error state and let them cancel manually
       setConnectionRole('none');
-      setZapyaModal('none');
-      setPeerConnectionError('Error conectando con Supabase para registrar grupo.');
+      setPairingCode('----');
+      setIsSearchingPeer(false);
+      setPeerConnectionError('Falla en base de datos: La tabla "ludus_sync_sessions" no existe en tu Supabase aún. Por favor ejecuta el script SQL "ludus-schema.sql" en tu panel para habilitarla.');
     }
   };
 
@@ -452,7 +454,7 @@ export default function LudusCloudGameHub() {
       setupSyncRoom(session.code);
     } else {
       setIsSearchingPeer(false);
-      setPeerConnectionError('Código inválido o sesión inactiva.');
+      setPeerConnectionError('Código inválido, la tabla de emparejamiento no existe o el host está desconectado.');
       playBeep(200, 0.3);
     }
   };
@@ -583,60 +585,6 @@ export default function LudusCloudGameHub() {
 
       <AnimatePresence mode="wait">
         
-        {/* ═══════════════════════════════════════════════
-           SCREEN 1: CARGA / SPLASH SCREEN (FLAT COLOR)
-           ═══════════════════════════════════════════════ */}
-        {activeScreen === 'loading' && (
-          <motion.div
-            key="loading"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-[#09070f] z-50 flex flex-col justify-center items-center px-6"
-          >
-            <div className="text-center space-y-8 max-w-sm w-full">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
-                className="relative w-28 h-28 mx-auto"
-              >
-                <div className="absolute inset-0 rounded-full border-4 border-dashed" style={{ borderColor: `${currentThemeObj.primary}40` }} />
-                <div className="absolute inset-2.5 rounded-full border-2" style={{ borderColor: `${currentThemeObj.secondary}40` }} />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-11 h-11" style={{ color: currentThemeObj.primary }}>
-                    <path d="M12 2a4 4 0 0 0-4 4v4H5a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3h-3V6a4 4 0 0 0-4-4z" />
-                  </svg>
-                </div>
-              </motion.div>
-
-              <div className="space-y-1.5">
-                <h1 className="text-2xl font-black tracking-widest uppercase font-mono" style={{ color: currentThemeObj.primary }}>
-                  Ludus Cloud
-                </h1>
-                <p className="text-[9px] uppercase font-bold text-stone-500 tracking-[0.25em]">
-                  Realtime Offline-First Hub
-                </p>
-              </div>
-
-              {/* Progress bar */}
-              <div className="space-y-2">
-                <div className="w-full h-2 rounded-full bg-stone-900 border border-stone-850 p-0.5 overflow-hidden">
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${loadingProgress}%`,
-                      backgroundColor: currentThemeObj.primary
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between text-[9px] text-stone-500 font-mono font-bold tracking-wider">
-                  <span>BOOTING CORES...</span>
-                  <span>{loadingProgress}%</span>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
         {/* ═══════════════════════════════════════════════
            SCREEN 2: HUB PRINCIPAL (DEFAULT)
            ═══════════════════════════════════════════════ */}
@@ -769,7 +717,7 @@ export default function LudusCloudGameHub() {
                               <button
                                 onClick={() => handleDownloadGame(g.id)}
                                 disabled={isDownloading}
-                                className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-850 text-stone-400 flex items-center justify-center"
+                                className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-855 text-stone-400 flex items-center justify-center"
                               >
                                 {isDownloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: currentThemeObj.secondary }} /> : <Download className="w-3.5 h-3.5" />}
                               </button>
@@ -802,10 +750,21 @@ export default function LudusCloudGameHub() {
           >
             {/* Immersive radar */}
             <div 
-              className="flex-1 w-full flex flex-col justify-center items-center px-4 space-y-5 no-touch-actions z-10 pb-24"
+              className="flex-1 w-full flex flex-col justify-center items-center px-4 space-y-4 no-touch-actions z-10 pb-24"
               style={{ paddingTop: isHeaderExpanded ? '1rem' : 'calc(env(safe-area-inset-top) + 2rem)' }}
             >
-              <div className="cyber-card rounded-[32px] p-5 border border-stone-855 text-center space-y-4 relative overflow-hidden w-full max-w-sm flex flex-col items-center justify-center min-h-[360px] shadow-2xl">
+              {/* IMMERSIVE INFO BANNER REGARDING HARDWARE DISCOVERY CAPABILITIES */}
+              <div className="w-full max-w-sm p-3 bg-yellow-950/20 border border-yellow-900/30 rounded-2xl flex gap-2.5 items-start text-left">
+                <AlertTriangle className="w-4.5 h-4.5 text-yellow-500 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 font-sans">
+                  <h4 className="text-[10px] font-black text-yellow-500 uppercase leading-none">Importante para Sincronizar:</h4>
+                  <p className="text-[8px] text-stone-400 font-bold leading-relaxed">
+                    Los navegadores web no tienen permisos del celular para encender el WiFi físico de tu teléfono. Por favor, **asegúrate de encender el WiFi / Hotspot manualmente en tus ajustes de Android/iOS** antes de sincronizar.
+                  </p>
+                </div>
+              </div>
+
+              <div className="cyber-card rounded-[32px] p-5 border border-stone-855 text-center space-y-4 relative overflow-hidden w-full max-w-sm flex flex-col items-center justify-center min-h-[350px] shadow-2xl">
                 
                 {!peerConnected && (
                   <>
@@ -820,7 +779,7 @@ export default function LudusCloudGameHub() {
                       <div className="relative w-14 h-14 rounded-full bg-[#09070f] border-2 flex flex-col items-center justify-center p-1 shadow-lg z-20 animate-pulse"
                            style={{ borderColor: currentThemeObj.primary }}>
                         <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-9 h-9" />
-                        <span className="absolute -bottom-3 bg-stone-950 border border-stone-855 px-2 py-0.5 rounded-full text-[7px] font-black max-w-[65px] truncate uppercase font-mono text-white">
+                        <span className="absolute -bottom-3 bg-stone-950 border border-stone-800 px-2 py-0.5 rounded-full text-[7px] font-black max-w-[65px] truncate uppercase font-mono text-white">
                           {gamerTag}
                         </span>
                       </div>
@@ -870,7 +829,7 @@ export default function LudusCloudGameHub() {
                 {peerConnected && (
                   <div className="space-y-5 text-center w-full py-4">
                     <div className="flex justify-center items-center gap-5">
-                      <div className="w-12 h-14 rounded-full bg-stone-900 border border-stone-850 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.primary }}>
+                      <div className="w-12 h-14 rounded-full bg-stone-900 border border-stone-855 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.primary }}>
                         <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-9 h-9" />
                       </div>
                       <span className="text-lg animate-pulse text-[#06b6d4]">⚡</span>
@@ -1237,18 +1196,27 @@ export default function LudusCloudGameHub() {
                 <div className="absolute inset-0 border-2 border-dashed border-cyan-400 rounded-3xl animate-pulse pointer-events-none scale-105" />
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <p className="text-[10px] text-stone-500 font-bold uppercase tracking-widest font-mono">PIN de emparejamiento</p>
                 <p className="text-4xl font-black tracking-widest text-[#06b6d4] font-mono">{pairingCode}</p>
-                <p className="text-[9px] text-stone-400 font-medium leading-relaxed max-w-[240px] mx-auto pt-1">
-                  Pídele a tu amigo que escanee tu pantalla en la sección de radar o que digite el PIN directamente en su app.
-                </p>
+                
+                {peerConnectionError ? (
+                  <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-2xl text-left">
+                    <p className="text-[9px] text-red-400 font-bold leading-normal">{peerConnectionError}</p>
+                  </div>
+                ) : (
+                  <p className="text-[9px] text-stone-400 font-medium leading-relaxed max-w-[240px] mx-auto pt-1 font-sans">
+                    Pídele a tu amigo que escanee tu pantalla en la sección de radar o que digite el PIN directamente en su app.
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-[9px] text-cyan-400 font-black animate-pulse uppercase tracking-widest">
-                <RefreshIcon className="w-3.5 h-3.5 animate-spin" />
-                <span>Esperando jugador en Supabase...</span>
-              </div>
+              {!peerConnectionError && (
+                <div className="flex items-center justify-center gap-2 text-[9px] text-cyan-400 font-black animate-pulse uppercase tracking-widest">
+                  <RefreshIcon className="w-3.5 h-3.5 animate-spin" />
+                  <span>Esperando jugador en Supabase...</span>
+                </div>
+              )}
             </motion.div>
           </div>
         )}
@@ -1269,7 +1237,7 @@ export default function LudusCloudGameHub() {
               </div>
 
               <form onSubmit={handleJoinByCode} className="space-y-4 pt-2">
-                <p className="text-[10px] text-stone-400 leading-normal max-w-xs mx-auto">
+                <p className="text-[10px] text-stone-400 leading-normal max-w-xs mx-auto font-sans">
                   Introduce el PIN de 4 dígitos generado por tu amigo (Host) para unirte a su sala en caliente.
                 </p>
 
@@ -1283,6 +1251,12 @@ export default function LudusCloudGameHub() {
                     className="w-full max-w-[200px] px-4 py-3 rounded-xl bg-stone-950 border border-stone-855 text-center text-xl font-black placeholder-stone-700 focus:outline-none focus:border-[#a855f7] font-mono tracking-widest text-white"
                   />
                 </div>
+
+                {peerConnectionError && (
+                  <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-2xl text-left">
+                    <p className="text-[9px] text-red-400 font-bold leading-normal">{peerConnectionError}</p>
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -1352,13 +1326,13 @@ export default function LudusCloudGameHub() {
 
         {/* PREMIUM ONBOARDING INTERACTIVE TUTORIAL */}
         {showOnboarding && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-touch-actions">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-touch-actions font-sans">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.85 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black" />
             <motion.div
               initial={{ scale: 0.9, y: 30 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 30 }}
-              className="relative w-full max-w-sm bg-[#120e1e] border-2 rounded-[32px] p-6 text-center space-y-5 z-10 shadow-2xl"
+              className="relative w-full max-w-sm bg-[#120e1e] border-2 rounded-[32px] p-6 text-center space-y-5 z-10 shadow-2xl font-sans"
               style={{ borderColor: currentThemeObj.primary }}
             >
               <div className="w-14 h-14 rounded-2xl bg-stone-900 border border-stone-800 flex items-center justify-center mx-auto text-2xl animate-bounce">
@@ -1412,7 +1386,7 @@ export default function LudusCloudGameHub() {
                 <button
                   key={tab.id}
                   onClick={() => { playBeep(520, 0.05); setActiveScreen(tab.id); }}
-                  className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all font-mono"
+                  className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all"
                   style={{ color: isActive ? currentThemeObj.primary : '#a8a29e' }}
                 >
                   <Icon className={`w-5 h-5 ${isActive ? 'scale-110' : ''}`} style={{ filter: isActive ? `drop-shadow(0 0 5px ${currentThemeObj.primary}80)` : 'none' }} />
