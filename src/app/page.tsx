@@ -1263,3 +1263,593 @@ export default function LudusCloudGameHub() {
 function itemQuantity(item: any): number {
   return item.quantity || 1;
 }
+
+// ═══════════════════════════════════════════════
+// GAME COMPONENT 1: PIXEL PONG NEO (CRASH-PROOF)
+// ═══════════════════════════════════════════════
+function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
+  peerConnected: boolean; peerGamerTag: string; soundsEnabled: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [p1Score, setP1Score] = useState(0);
+  const [p2Score, setP2Score] = useState(0);
+
+  const lastSentYRef = useRef<number>(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = (canvas.width = canvas.parentElement?.clientWidth || 300);
+    let height = (canvas.height = canvas.parentElement?.clientHeight || 300);
+
+    const paddleWidth = 12;
+    const paddleHeight = 65;
+    const ballRadius = 7;
+
+    let p1Y = height / 2 - paddleHeight / 2;
+    let p2Y = height / 2 - paddleHeight / 2;
+
+    let ballX = width / 2;
+    let ballY = height / 2;
+    let ballSpeedX = 3.5 * (Math.random() > 0.5 ? 1 : -1);
+    let ballSpeedY = (Math.random() * 2 - 1) * 2.5;
+
+    let localScore1 = 0;
+    let localScore2 = 0;
+
+    const handleMove = (y: number) => {
+      p1Y = y - paddleHeight / 2;
+      if (p1Y < 0) p1Y = 0;
+      if (p1Y > height - paddleHeight) p1Y = height - paddleHeight;
+
+      if (peerConnected && Math.abs(p1Y - lastSentYRef.current) > 2) {
+        lastSentYRef.current = p1Y;
+        const event = new CustomEvent('ludus-local-broadcast', {
+          detail: { p1Y: p1Y / height, score1: localScore1, score2: localScore2 }
+        });
+        window.dispatchEvent(event);
+      }
+    };
+
+    const onTouch = (e: TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const clientY = e.touches[0].clientY - rect.top;
+      handleMove(clientY);
+    };
+
+    const onMouse = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const clientY = e.clientY - rect.top;
+      handleMove(clientY);
+    };
+
+    const handlePeerUpdate = (e: any) => {
+      if (e.detail && e.detail.p1Y !== undefined) {
+        p2Y = e.detail.p1Y * height;
+      }
+    };
+
+    canvas.addEventListener('touchmove', onTouch, { passive: true });
+    canvas.addEventListener('mousemove', onMouse);
+    window.addEventListener('ludus-peer-state', handlePeerUpdate);
+
+    let frameId: number;
+
+    const gameLoop = () => {
+      ctx.fillStyle = '#09070f';
+      ctx.fillRect(0, 0, width, height);
+
+      // Central line
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.setLineDash([4, 8]);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.stroke();
+
+      // AI movement
+      if (!peerConnected) {
+        const targetY = ballY - paddleHeight / 2;
+        p2Y += (targetY - p2Y) * 0.12;
+      }
+
+      if (p2Y < 0) p2Y = 0;
+      if (p2Y > height - paddleHeight) p2Y = height - paddleHeight;
+
+      ballX += ballSpeedX;
+      ballY += ballSpeedY;
+
+      if (ballY - ballRadius < 0) {
+        ballY = ballRadius;
+        ballSpeedY = -ballSpeedY;
+      }
+      if (ballY + ballRadius > height) {
+        ballY = height - ballRadius;
+        ballSpeedY = -ballSpeedY;
+      }
+
+      if (ballX - ballRadius < paddleWidth && ballY > p1Y && ballY < p1Y + paddleHeight) {
+        ballSpeedX = -ballSpeedX;
+        ballX = paddleWidth + ballRadius;
+        ballSpeedX *= 1.04;
+        ballSpeedY = (ballY - (p1Y + paddleHeight / 2)) * 0.15;
+      }
+
+      if (ballX + ballRadius > width - paddleWidth && ballY > p2Y && ballY < p2Y + paddleHeight) {
+        ballSpeedX = -ballSpeedX;
+        ballX = width - paddleWidth - ballRadius;
+        ballSpeedX *= 1.04;
+        ballSpeedY = (ballY - (p2Y + paddleHeight / 2)) * 0.15;
+      }
+
+      if (ballX < 0) {
+        localScore2++;
+        setP2Score(localScore2);
+        ballX = width / 2;
+        ballY = height / 2;
+        ballSpeedX = -3.5;
+        ballSpeedY = (Math.random() * 2 - 1) * 2.5;
+      }
+
+      if (ballX > width) {
+        localScore1++;
+        setP1Score(localScore1);
+        ballX = width / 2;
+        ballY = height / 2;
+        ballSpeedX = 3.5;
+        ballSpeedY = (Math.random() * 2 - 1) * 2.5;
+      }
+
+      // Draw paddles with glowing neon
+      ctx.fillStyle = '#06b6d4';
+      ctx.fillRect(0, p1Y, paddleWidth, paddleHeight);
+
+      ctx.fillStyle = '#a855f7';
+      ctx.fillRect(width - paddleWidth, p2Y, paddleWidth, paddleHeight);
+
+      // Draw Ball
+      ctx.fillStyle = '#e5b31c';
+      ctx.beginPath();
+      ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      frameId = requestAnimationFrame(gameLoop);
+    };
+
+    gameLoop();
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      canvas.removeEventListener('touchmove', onTouch);
+      canvas.removeEventListener('mousemove', onMouse);
+      window.removeEventListener('ludus-peer-state', handlePeerUpdate);
+    };
+  }, [peerConnected]);
+
+  return (
+    <div className="w-full h-full max-w-xl max-h-[75vh] flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions">
+      <div className="flex justify-between w-full font-mono text-[10px] font-black tracking-widest text-[#06b6d4]">
+        <div>
+          <p>PLAYER (TÚ)</p>
+          <p className="text-2xl font-black text-white">{p1Score}</p>
+        </div>
+        <div className="text-right">
+          <p>{peerConnected ? peerGamerTag.toUpperCase() : 'IA BOT'}</p>
+          <p className="text-2xl font-black text-[#a855f7]">{p2Score}</p>
+        </div>
+      </div>
+
+      <div className="w-full h-80 relative border border-stone-850 rounded-[28px] overflow-hidden bg-stone-950/40">
+        <canvas ref={canvasRef} className="w-full h-full cursor-none" />
+      </div>
+
+      <p className="text-[9px] text-stone-500 text-center font-bold uppercase tracking-wider font-mono">
+        Desliza en la pantalla para mover tu pala cian
+      </p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════
+// GAME COMPONENT 2: COSMIC SNAKE (CRASH-PROOF)
+// ═══════════════════════════════════════════════
+function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [score, setScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+
+  const directionRef = useRef<'UP' | 'DOWN' | 'LEFT' | 'RIGHT'>('RIGHT');
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const size = 300;
+    canvas.width = size;
+    canvas.height = size;
+    const grid = 15;
+
+    let snake = [
+      { x: grid * 5, y: grid * 5 },
+      { x: grid * 4, y: grid * 5 },
+      { x: grid * 3, y: grid * 5 }
+    ];
+
+    let apple = { x: grid * 10, y: grid * 10 };
+    let currentScore = 0;
+    let localGameOver = false;
+
+    const spawnApple = () => {
+      apple.x = Math.floor(Math.random() * (size / grid)) * grid;
+      apple.y = Math.floor(Math.random() * (size / grid)) * grid;
+    };
+
+    let intervalId = setInterval(() => {
+      if (localGameOver) return;
+
+      const head = { ...snake[0] };
+      const dir = directionRef.current;
+
+      if (dir === 'UP') head.y -= grid;
+      if (dir === 'DOWN') head.y += grid;
+      if (dir === 'LEFT') head.x -= grid;
+      if (dir === 'RIGHT') head.x += grid;
+
+      if (head.x < 0) head.x = size - grid;
+      if (head.x >= size) head.x = 0;
+      if (head.y < 0) head.y = size - grid;
+      if (head.y >= size) head.y = 0;
+
+      if (snake.some(s => s.x === head.x && s.y === head.y)) {
+        localGameOver = true;
+        setGameOver(true);
+        return;
+      }
+
+      snake.unshift(head);
+
+      if (head.x === apple.x && head.y === apple.y) {
+        currentScore += 10;
+        setScore(currentScore);
+        if (currentScore > highScore) setHighScore(currentScore);
+        spawnApple();
+      } else {
+        snake.pop();
+      }
+
+      ctx.fillStyle = '#09070f';
+      ctx.fillRect(0, 0, size, size);
+
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.04)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < size; i += grid) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, size);
+        ctx.moveTo(0, i);
+        ctx.lineTo(size, i);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#e5b31c';
+      ctx.fillRect(apple.x + 2, apple.y + 2, grid - 4, grid - 4);
+
+      snake.forEach((s, idx) => {
+        ctx.fillStyle = idx === 0 ? '#06b6d4' : '#a855f7';
+        ctx.fillRect(s.x + 1, s.y + 1, grid - 2, grid - 2);
+      });
+
+    }, 110);
+
+    return () => clearInterval(intervalId);
+  }, [gameOver]);
+
+  const handleArrow = (dir: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => {
+    const cur = directionRef.current;
+    if (dir === 'UP' && cur !== 'DOWN') directionRef.current = 'UP';
+    if (dir === 'DOWN' && cur !== 'UP') directionRef.current = 'DOWN';
+    if (dir === 'LEFT' && cur !== 'RIGHT') directionRef.current = 'LEFT';
+    if (dir === 'RIGHT' && cur !== 'LEFT') directionRef.current = 'RIGHT';
+  };
+
+  const resetGame = () => {
+    directionRef.current = 'RIGHT';
+    setScore(0);
+    setGameOver(false);
+  };
+
+  return (
+    <div className="w-full h-full max-w-md flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions">
+      <div className="flex justify-between w-full font-mono text-[10px] font-bold text-[#a855f7] tracking-wider">
+        <span>SCORE: <span className="text-white text-lg font-black">{score}</span></span>
+        <span>HIGHSCORE: <span className="text-[#06b6d4] text-lg font-black">{highScore}</span></span>
+      </div>
+
+      <div className="relative border border-stone-850 rounded-[28px] overflow-hidden aspect-square w-full max-w-[280px]">
+        <canvas ref={canvasRef} className="w-full h-full" />
+        
+        {gameOver && (
+          <div className="absolute inset-0 bg-black/85 flex flex-col justify-center items-center space-y-3">
+            <p className="text-sm font-black tracking-widest text-[#a855f7] uppercase font-mono">GAME OVER</p>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 rounded-xl bg-gradient-to-br from-[#06b6d4] to-[#0891b2] text-stone-950 text-[10px] font-black uppercase tracking-wider shadow"
+            >
+              Reiniciar
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="w-full max-w-[180px] flex flex-col items-center gap-1 py-1 shrink-0">
+        <button
+          onClick={() => handleArrow('UP')}
+          className="w-11 h-9 rounded-xl bg-stone-900 border border-stone-800 hover:border-[#06b6d4] active:scale-95 transition-transform flex items-center justify-center text-xs font-bold text-white shadow"
+        >
+          ▲
+        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={() => handleArrow('LEFT')}
+            className="w-11 h-9 rounded-xl bg-stone-900 border border-stone-800 hover:border-[#06b6d4] active:scale-95 transition-transform flex items-center justify-center text-xs font-bold text-white shadow"
+          >
+            ◀
+          </button>
+          <div className="w-11 h-9" />
+          <button
+            onClick={() => handleArrow('RIGHT')}
+            className="w-11 h-9 rounded-xl bg-stone-900 border border-stone-800 hover:border-[#06b6d4] active:scale-95 transition-transform flex items-center justify-center text-xs font-bold text-white shadow"
+          >
+            ▶
+          </button>
+        </div>
+        <button
+          onClick={() => handleArrow('DOWN')}
+          className="w-11 h-9 rounded-xl bg-stone-900 border border-stone-800 hover:border-[#06b6d4] active:scale-95 transition-transform flex items-center justify-center text-xs font-bold text-white shadow"
+        >
+          ▼
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════
+// GAME COMPONENT 3: METEOR STORM (100% CRASH-PROOF)
+// ═══════════════════════════════════════════════
+function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [score, setScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [highScore, setHighScore] = useState(0);
+
+  const keysPressedRef = useRef<{ left: boolean; right: boolean; shoot: boolean }>({ left: false, right: false, shoot: false });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = (canvas.width = 300);
+    const height = (canvas.height = 340);
+
+    let shipX = width / 2;
+    const shipY = height - 25;
+    const shipWidth = 22;
+
+    interface Meteor { x: number; y: number; size: number; speed: number; }
+    interface Laser { x: number; y: number; }
+
+    let meteors: Meteor[] = [];
+    let lasers: Laser[] = [];
+
+    let currentScore = 0;
+    let localGameOver = false;
+
+    let nextMeteorFrame = 0;
+    let shootCooldown = 0;
+
+    const spawnMeteor = () => {
+      const size = 10 + Math.random() * 14;
+      meteors.push({
+        x: Math.random() * (width - size),
+        y: -size,
+        size,
+        speed: 1.4 + Math.random() * 1.8
+      });
+    };
+
+    let frameId: number;
+
+    const gameLoop = () => {
+      if (localGameOver) return;
+
+      // Clear Screen
+      ctx.fillStyle = '#09070f';
+      ctx.fillRect(0, 0, width, height);
+
+      // Star Particles
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      for (let i = 0; i < 5; i++) {
+        ctx.fillRect(Math.random() * width, Math.random() * height, 1, 1);
+      }
+
+      // Movement
+      const keys = keysPressedRef.current;
+      if (keys.left) shipX -= 3.2;
+      if (keys.right) shipX += 3.2;
+
+      if (shipX < shipWidth) shipX = shipWidth;
+      if (shipX > width - shipWidth) shipX = width - shipWidth;
+
+      // Laser Shoot
+      if (keys.shoot && shootCooldown <= 0) {
+        lasers.push({ x: shipX, y: shipY - 8 });
+        shootCooldown = 15;
+      }
+      if (shootCooldown > 0) shootCooldown--;
+
+      // Move lasers
+      lasers.forEach(l => {
+        l.y -= 5;
+      });
+
+      // Spawn meteors
+      if (nextMeteorFrame <= 0) {
+        spawnMeteor();
+        nextMeteorFrame = 35 + Math.random() * 25;
+      }
+      nextMeteorFrame--;
+
+      // Move meteors
+      meteors.forEach(m => {
+        m.y += m.speed;
+      });
+
+      // Ship Collision Check
+      for (let i = 0; i < meteors.length; i++) {
+        const m = meteors[i];
+        const dist = Math.hypot(m.x - shipX, m.y - shipY);
+        if (dist < m.size + shipWidth / 2) {
+          localGameOver = true;
+          setGameOver(true);
+          return;
+        }
+      }
+
+      // CRASH-PROOF COLLISION CHECKING (NO SPLICES INSIDE FOREACH!)
+      const hitMeteorIndices = new Set<number>();
+      const hitLaserIndices = new Set<number>();
+
+      meteors.forEach((m, mIdx) => {
+        lasers.forEach((l, lIdx) => {
+          const dist = Math.hypot(m.x - l.x, m.y - l.y);
+          if (dist < m.size) {
+            hitMeteorIndices.add(mIdx);
+            hitLaserIndices.add(lIdx);
+            currentScore += 15;
+          }
+        });
+      });
+
+      if (hitMeteorIndices.size > 0) {
+        setScore(currentScore);
+        if (currentScore > highScore) setHighScore(currentScore);
+      }
+
+      // Filter arrays cleanly
+      meteors = meteors.filter((m, mIdx) => !hitMeteorIndices.has(mIdx) && m.y <= height + m.size);
+      lasers = lasers.filter((l, lIdx) => !hitLaserIndices.has(lIdx) && l.y > 0);
+
+      // Draw Lasers
+      ctx.fillStyle = '#06b6d4';
+      lasers.forEach(l => {
+        ctx.fillRect(l.x - 1, l.y, 2, 8);
+      });
+
+      // Draw Meteors
+      ctx.fillStyle = '#a855f7';
+      meteors.forEach(m => {
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Draw Spaceship
+      ctx.fillStyle = '#e5b31c';
+      ctx.beginPath();
+      ctx.moveTo(shipX, shipY - 10);
+      ctx.lineTo(shipX - shipWidth / 2, shipY + 8);
+      ctx.lineTo(shipX + shipWidth / 2, shipY + 8);
+      ctx.closePath();
+      ctx.fill();
+
+      frameId = requestAnimationFrame(gameLoop);
+    };
+
+    gameLoop();
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [gameOver]);
+
+  const setKey = (key: 'left' | 'right' | 'shoot', val: boolean) => {
+    keysPressedRef.current[key] = val;
+  };
+
+  const resetGame = () => {
+    setScore(0);
+    setGameOver(false);
+  };
+
+  return (
+    <div className="w-full h-full max-w-md flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions">
+      <div className="flex justify-between w-full font-mono text-[10px] font-bold text-[#e5b31c] tracking-wider">
+        <span>SCORE: <span className="text-white text-lg font-black">{score}</span></span>
+        <span>HIGHSCORE: <span className="text-[#06b6d4] text-lg font-black">{highScore}</span></span>
+      </div>
+
+      <div className="relative border border-stone-850 rounded-[28px] overflow-hidden w-full max-w-[280px] h-[340px] bg-stone-950/40">
+        <canvas ref={canvasRef} className="w-full h-full" />
+        
+        {gameOver && (
+          <div className="absolute inset-0 bg-black/85 flex flex-col justify-center items-center space-y-3">
+            <p className="text-sm font-mono font-black text-cyan-400 uppercase tracking-widest">MISSION FAILED</p>
+            <button
+              onClick={resetGame}
+              className="px-4 py-2 rounded-xl bg-gradient-to-br from-[#a855f7] to-[#d946ef] text-white text-[10px] font-black uppercase tracking-wider shadow"
+            >
+              Reiniciar
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="w-full max-w-[260px] flex justify-between items-center py-2 shrink-0">
+        <div className="flex gap-2">
+          <button
+            onTouchStart={() => setKey('left', true)}
+            onTouchEnd={() => setKey('left', false)}
+            onMouseDown={() => setKey('left', true)}
+            onMouseUp={() => setKey('left', false)}
+            onMouseLeave={() => setKey('left', false)}
+            className="w-11 h-11 rounded-xl bg-stone-900 border border-stone-800 text-sm font-bold text-white select-none active:scale-95 transition-transform"
+          >
+            ◀
+          </button>
+          <button
+            onTouchStart={() => setKey('right', true)}
+            onTouchEnd={() => setKey('right', false)}
+            onMouseDown={() => setKey('right', true)}
+            onMouseUp={() => setKey('right', false)}
+            onMouseLeave={() => setKey('right', false)}
+            className="w-11 h-11 rounded-xl bg-stone-900 border border-stone-800 text-sm font-bold text-white select-none active:scale-95 transition-transform"
+          >
+            ▶
+          </button>
+        </div>
+
+        <button
+          onTouchStart={() => setKey('shoot', true)}
+          onTouchEnd={() => setKey('shoot', false)}
+          onMouseDown={() => setKey('shoot', true)}
+          onMouseUp={() => setKey('shoot', false)}
+          onMouseLeave={() => setKey('shoot', false)}
+          className="w-14 h-14 rounded-full bg-gradient-to-br from-red-500 to-red-700 text-white font-black text-[10px] shadow-lg active:scale-95 select-none font-mono"
+        >
+          FUEGO
+        </button>
+      </div>
+    </div>
+  );
+}
+
