@@ -7,19 +7,44 @@
   --secondary-glow: rgba(168, 85, 247, 0.45);
 }
 
-body {
+/* Force HTML and Body to be strictly non-scrollable on mobile browsers */
+html, body {
   color: var(--foreground);
   background-color: var(--background);
   font-family: "Exo 2", "Orbitron", system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
+  
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  overscroll-behavior-y: none !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  
   user-select: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Immersive scrolling container with iOS momentum scroll */
+.scrollable-y {
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Disable touch actions on active canvas and gaming inputs */
+.no-touch-actions {
+  touch-action: none !important;
 }
 
 /* Custom futuristic gaming scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: #0d0a1a;
@@ -100,7 +125,7 @@ body {
   display: block;
   position: absolute;
   top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 255, 0, 0.03));
   z-index: 10;
   background-size: 100% 4px, 6px 100%;
   pointer-events: none;

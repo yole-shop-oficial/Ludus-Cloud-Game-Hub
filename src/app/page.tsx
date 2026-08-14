@@ -69,15 +69,14 @@ export default function LudusCloudGameHub() {
   const [activeTheme, setActiveTheme] = useState('nebula');
 
   const supabaseConnected = true;
-
   const [clientId, setClientId] = useState('');
 
-  // Games & installation state
+  // Games State
   const [games, setGames] = useState<Game[]>(LOCAL_GAMES);
   const [downloadedGameIds, setDownloadedGames] = useState<string[]>([]);
   const [downloadingGameId, setDownloadingGameId] = useState<string | null>(null);
 
-  // 100% REAL SUPABASE PRESENCE RADAR STATES
+  // WiFi Connection (Zapya-Style Radar) States
   const [connectionRole, setConnectionRole] = useState<'none' | 'host' | 'client'>('none');
   const [pairingCode, setPairingCode] = useState('');
   const [inputCode, setInputCode] = useState('');
@@ -87,27 +86,22 @@ export default function LudusCloudGameHub() {
   const [isSearchingPeer, setIsSearchingPeer] = useState(false);
   const [peerConnectionError, setPeerConnectionError] = useState('');
 
-  // Real list of other active devices in the Supabase Presence Room!
+  // Zapya states
   const [scannedRadarPeers, setScannedRadarPeers] = useState<{ name: string; avatar: string; clientId: string; x: number; y: number }[]>([]);
-
-  // Active Connection Invite Popup State
   const [incomingInvite, setIncomingInvite] = useState<{ fromTag: string; fromId: string; code: string } | null>(null);
-
-  // Modal overlays
   const [zapyaModal, setZapyaModal] = useState<'none' | 'create_group' | 'join_code'>('none');
 
   // Selected game
   const [playingGameId, setPlayingGameId] = useState<string | null>(null);
 
-  // Catalog Search
+  // Search/Filters in Hub
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
 
-  // Broadcast & Presence channel references
   const presenceChannelRef = useRef<any>(null);
   const syncChannelRef = useRef<any>(null);
 
-  // Setup unique Client ID & configurations
+  // Load configs
   useEffect(() => {
     let id = localStorage.getItem('ludus_client_id');
     if (!id) {
@@ -147,7 +141,103 @@ export default function LudusCloudGameHub() {
     return () => clearInterval(interval);
   }, []);
 
-  // Play retro audio
+  // Simulating discovery of local radar users upon entering the WiFi tab
+  useEffect(() => {
+    if (activeScreen !== 'wifi' || !clientId) return;
+
+    const presenceChannel = supabase.channel('ludus-radar-lobby', {
+      config: {
+        presence: {
+          key: clientId,
+        },
+      },
+    });
+
+    presenceChannelRef.current = presenceChannel;
+
+    presenceChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presenceChannel.presenceState();
+        parsePresenceState(state);
+      })
+      .on('presence', { event: 'join' }, () => {
+        playBeep(700, 0.1);
+      })
+      .on('presence', { event: 'leave' }, () => {
+        playBeep(300, 0.1);
+      })
+      .on('broadcast', { event: 'sync-invite' }, (payload: any) => {
+        const data = payload.payload;
+        if (data.targetId === clientId) {
+          setIncomingInvite({
+            fromTag: data.fromTag,
+            fromId: data.fromId,
+            code: data.code
+          });
+          playBeep(600, 0.2);
+        }
+      })
+      .on('broadcast', { event: 'sync-response' }, (payload: any) => {
+        const data = payload.payload;
+        if (data.targetId === clientId && data.accepted) {
+          setPeerGamerTag(data.peerTag);
+          setPeerAvatar(data.peerAvatar);
+          setPeerConnected(true);
+          setIsSearchingPeer(false);
+          setZapyaModal('none');
+          playBeep(880, 0.35);
+
+          setupSyncRoom(data.code);
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await presenceChannel.track({
+            gamerTag,
+            avatar,
+            clientId,
+            onlineAt: new Date().toISOString(),
+          });
+        }
+      });
+
+    return () => {
+      if (presenceChannelRef.current) {
+        presenceChannelRef.current.unsubscribe();
+        presenceChannelRef.current = null;
+      }
+    };
+  }, [activeScreen, gamerTag, avatar, clientId]);
+
+  const parsePresenceState = (state: Record<string, any[]>) => {
+    const peers: any[] = [];
+    let count = 0;
+    
+    Object.entries(state).forEach(([key, value]) => {
+      if (key === clientId) return;
+
+      const pInfo = value[0];
+      if (pInfo && pInfo.gamerTag) {
+        const angle = (count * 135 + 45) * (Math.PI / 180);
+        const radius = 35 + (count * 10) % 25;
+        
+        const x = 50 + Math.cos(angle) * radius;
+        const y = 50 + Math.sin(angle) * radius;
+
+        peers.push({
+          name: pInfo.gamerTag,
+          avatar: pInfo.avatar || 'av-2',
+          clientId: pInfo.clientId,
+          x,
+          y
+        });
+        count++;
+      }
+    });
+
+    setScannedRadarPeers(peers);
+  };
+
   const playBeep = (freq = 440, duration = 0.1) => {
     if (!soundsEnabled || typeof window === 'undefined') return;
     try {
@@ -164,7 +254,6 @@ export default function LudusCloudGameHub() {
     } catch { /* ignore */ }
   };
 
-  // Installation simulator
   const handleDownloadGame = (gameId: string) => {
     if (downloadedGameIds.includes(gameId)) return;
     setDownloadingGameId(gameId);
@@ -186,116 +275,6 @@ export default function LudusCloudGameHub() {
     playBeep(220, 0.2);
   };
 
-  // ═══════════════════════════════════════════════
-  // 100% REAL SUPABASE PRESENCE RADAR DISCOVERY
-  // ═══════════════════════════════════════════════
-  useEffect(() => {
-    if (activeScreen !== 'wifi' || !clientId) return;
-
-    // 1. Join a global presence room 'ludus-radar-lobby' on Supabase
-    const presenceChannel = supabase.channel('ludus-radar-lobby', {
-      config: {
-        presence: {
-          key: clientId,
-        },
-      },
-    });
-
-    presenceChannelRef.current = presenceChannel;
-
-    // Subscribe to track other online gamer peers on the radar
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        parsePresenceState(state);
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        playBeep(700, 0.1);
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        playBeep(300, 0.1);
-      })
-      // Listen to direct target broadcast pairing invitations!
-      .on('broadcast', { event: 'sync-invite' }, (payload: any) => {
-        const data = payload.payload;
-        if (data.targetId === clientId) {
-          // Show real-time overlay popup invitation!
-          setIncomingInvite({
-            fromTag: data.fromTag,
-            fromId: data.fromId,
-            code: data.code
-          });
-          playBeep(600, 0.2);
-        }
-      })
-      // Listen to response to our invite
-      .on('broadcast', { event: 'sync-response' }, (payload: any) => {
-        const data = payload.payload;
-        if (data.targetId === clientId && data.accepted) {
-          // Connected!
-          setPeerGamerTag(data.peerTag);
-          setPeerAvatar(data.peerAvatar);
-          setPeerConnected(true);
-          setIsSearchingPeer(false);
-          setZapyaModal('none');
-          playBeep(880, 0.35);
-
-          setupSyncRoom(data.code);
-        }
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          // Broadcast our own active presence with GamerTag and Avatar
-          await presenceChannel.track({
-            gamerTag,
-            avatar,
-            clientId,
-            onlineAt: new Date().toISOString(),
-          });
-        }
-      });
-
-    return () => {
-      if (presenceChannelRef.current) {
-        presenceChannelRef.current.unsubscribe();
-        presenceChannelRef.current = null;
-      }
-    };
-  }, [activeScreen, gamerTag, avatar, clientId]);
-
-  // Convert presence dictionary state to circular coordinates for Zapya Radar
-  const parsePresenceState = (state: Record<string, any[]>) => {
-    const peers: any[] = [];
-    let count = 0;
-    
-    Object.entries(state).forEach(([key, value]) => {
-      // Don't show our own device on the radar
-      if (key === clientId) return;
-
-      const pInfo = value[0];
-      if (pInfo && pInfo.gamerTag) {
-        // Generate pseudo-random coordinates based on ClientId to keep them drifting in a fixed circle
-        const angle = (count * 135 + 45) * (Math.PI / 180);
-        const radius = 35 + (count * 10) % 25; // radius between 35% and 60%
-        
-        const x = 50 + Math.cos(angle) * radius;
-        const y = 50 + Math.sin(angle) * radius;
-
-        peers.push({
-          name: pInfo.gamerTag,
-          avatar: pInfo.avatar || 'av-2',
-          clientId: pInfo.clientId,
-          x,
-          y
-        });
-        count++;
-      }
-    });
-
-    setScannedRadarPeers(peers);
-  };
-
-  // 1. Host creates a group and registers Pairing Code
   const handleCreateZapyaGroup = async () => {
     playBeep(440, 0.1);
     setZapyaModal('create_group');
@@ -307,7 +286,6 @@ export default function LudusCloudGameHub() {
     if (session) {
       setPairingCode(session.code);
 
-      // Listen on PostgreSQL db trigger to detect client join
       const channel = supabase
         .channel(`sync-session-${session.id}`)
         .on(
@@ -335,18 +313,15 @@ export default function LudusCloudGameHub() {
     }
   };
 
-  // 2. Client taps on discovered floating bubble on Radar to send a real-time request!
-  const handleSendRealConnectionInvite = (peer: { name: string; clientId: string }) => {
+  const handleConnectRadarPeer = (peer: { name: string; clientId: string }) => {
     if (!presenceChannelRef.current) return;
     playBeep(440, 0.08);
     setIsSearchingPeer(true);
     setPeerGamerTag(peer.name);
 
-    // Generate random code
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     setPairingCode(code);
 
-    // Send direct broadcast invitation to target client!
     presenceChannelRef.current.send({
       type: 'broadcast',
       event: 'sync-invite',
@@ -359,7 +334,6 @@ export default function LudusCloudGameHub() {
     });
   };
 
-  // 3. Handshake response actions
   const acceptIncomingInvite = () => {
     if (!incomingInvite || !presenceChannelRef.current) return;
     playBeep(520, 0.15);
@@ -368,7 +342,6 @@ export default function LudusCloudGameHub() {
     setPeerConnected(true);
     setIncomingInvite(null);
 
-    // Broadcast positive response to original sender!
     presenceChannelRef.current.send({
       type: 'broadcast',
       event: 'sync-response',
@@ -389,7 +362,28 @@ export default function LudusCloudGameHub() {
     playBeep(200, 0.2);
   };
 
-  // Setup low-latency broadcast state sync over Supabase Realtime Channels
+  const handleJoinByCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputCode.length !== 4) return;
+    playBeep(440, 0.1);
+    setIsSearchingPeer(true);
+    setConnectionRole('client');
+
+    const session = await joinSyncSession(inputCode, gamerTag, clientId);
+    if (session) {
+      setPeerGamerTag(session.host_name);
+      setPeerConnected(true);
+      setIsSearchingPeer(false);
+      setZapyaModal('none');
+      playBeep(880, 0.35);
+      setupSyncRoom(session.code);
+    } else {
+      setIsSearchingPeer(false);
+      setPeerConnectionError('Código inválido o sesión inactiva.');
+      playBeep(200, 0.3);
+    }
+  };
+
   const setupSyncRoom = (code: string) => {
     if (syncChannelRef.current) {
       syncChannelRef.current.unsubscribe();
@@ -421,7 +415,6 @@ export default function LudusCloudGameHub() {
     playBeep(300, 0.2);
   };
 
-  // Global broadcast trigger that games can call
   useEffect(() => {
     const handleLocalBroadcast = (e: any) => {
       if (syncChannelRef.current) {
@@ -451,21 +444,22 @@ export default function LudusCloudGameHub() {
 
   return (
     <div
-      className="relative min-h-screen cyber-grid bg-[#09070f] text-white overflow-hidden flex flex-col justify-between select-none scanlines transition-all"
+      className="fixed inset-0 h-full w-full bg-[#09070f] text-white overflow-hidden flex flex-col justify-between transition-all scanlines"
       style={{
         '--primary-glow': `${currentThemeObj.primary}45`,
         '--secondary-glow': `${currentThemeObj.secondary}45`,
+        height: '100dvh'
       } as React.CSSProperties}
     >
       
-      {/* Background ambient light */}
+      {/* Background ambient lights */}
       <div
         className="absolute top-0 left-1/4 w-[50vw] h-[50vh] bg-gradient-to-b blur-[120px] pointer-events-none -z-10 transition-all duration-500"
-        style={{ backgroundImage: `linear-gradient(to bottom, ${currentThemeObj.primary}15, transparent)` }}
+        style={{ backgroundImage: `linear-gradient(to bottom, ${currentThemeObj.primary}12, transparent)` }}
       />
       <div
         className="absolute bottom-0 right-1/4 w-[50vw] h-[50vh] bg-gradient-to-t blur-[120px] pointer-events-none -z-10 transition-all duration-500"
-        style={{ backgroundImage: `linear-gradient(to top, ${currentThemeObj.secondary}15, transparent)` }}
+        style={{ backgroundImage: `linear-gradient(to top, ${currentThemeObj.secondary}12, transparent)` }}
       />
 
       <AnimatePresence mode="wait">
@@ -506,7 +500,7 @@ export default function LudusCloudGameHub() {
 
               {/* Progress bar */}
               <div className="space-y-2">
-                <div className="w-full h-2 rounded-full bg-stone-900 border border-stone-800 p-0.5 overflow-hidden">
+                <div className="w-full h-2 rounded-full bg-stone-900 border border-stone-850 p-0.5 overflow-hidden">
                   <motion.div
                     className="h-full rounded-full"
                     style={{
@@ -530,197 +524,178 @@ export default function LudusCloudGameHub() {
         {activeScreen === 'hub' && (
           <motion.div
             key="hub"
-            initial={{ opacity: 0, y: 15 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 space-y-6 pb-24"
+            className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            {/* Header */}
-            <div className="flex justify-between items-center">
+            {/* Strict Header */}
+            <div className="w-full px-4 pt-4 pb-2 border-b border-stone-900 flex justify-between items-center bg-[#09070f]/90 z-20">
               <div className="flex items-center gap-2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-8 h-8" style={{ color: currentThemeObj.primary }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-7 h-7" style={{ color: currentThemeObj.primary }}>
                   <path d="M12 2a4 4 0 0 0-4 4v4H5a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3h-3V6a4 4 0 0 0-4-4z" />
                 </svg>
                 <div>
-                  <h1 className="text-sm font-black tracking-widest uppercase leading-none" style={{ color: currentThemeObj.primary }}>
+                  <h1 className="text-xs font-black tracking-widest uppercase leading-none" style={{ color: currentThemeObj.primary }}>
                     Ludus Cloud
                   </h1>
-                  <p className="text-[8px] font-bold tracking-widest uppercase mt-0.5" style={{ color: currentThemeObj.secondary }}>Game Hub</p>
+                  <p className="text-[7px] font-bold tracking-widest uppercase mt-0.5" style={{ color: currentThemeObj.secondary }}>Game Hub</p>
                 </div>
               </div>
 
-              {/* Profile button */}
               <button
                 onClick={() => { playBeep(); setActiveScreen('profile'); }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full cyber-card border border-stone-800"
+                className="flex items-center gap-2 px-3 py-1 rounded-full cyber-card border border-stone-850"
               >
-                <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-5 h-5" />
-                <span className="text-xs font-bold font-mono tracking-tight max-w-[80px] truncate">{gamerTag}</span>
+                <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-4 h-4" />
+                <span className="text-[10px] font-bold font-mono tracking-tight max-w-[80px] truncate">{gamerTag}</span>
               </button>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="cyber-card rounded-2xl p-3 flex items-center justify-between gap-3 border border-stone-800">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-center shrink-0">
-                    <Wifi className="w-4 h-4" style={{ color: currentThemeObj.primary }} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[8px] text-stone-500 font-bold uppercase tracking-wide">WiFi local Sync</p>
-                    <p className="text-xs font-black truncate">
-                      {peerConnected ? peerGamerTag : 'Desconectado'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { playBeep(); setActiveScreen('wifi'); }}
-                  className="px-2.5 py-1 rounded-lg bg-stone-900 text-[9px] font-bold border border-stone-800 shrink-0 hover:border-stone-700"
-                >
-                  Sync
-                </button>
-              </div>
-
-              <div className="cyber-card rounded-2xl p-3 flex items-center justify-between gap-3 border border-stone-800">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-center shrink-0">
-                    <Download className="w-4 h-4" style={{ color: currentThemeObj.secondary }} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[8px] text-stone-500 font-bold uppercase tracking-wide">Juegos Offline</p>
-                    <p className="text-xs font-black truncate">{downloadedGameIds.length} guardado(s)</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { playBeep(); setActiveScreen('downloads'); }}
-                  className="px-2.5 py-1 rounded-lg bg-stone-900 text-[9px] font-bold border border-stone-800 shrink-0 hover:border-stone-700"
-                >
-                  Manejar
-                </button>
-              </div>
-            </div>
-
-            {/* Search Engine */}
-            <div className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar juegos en Supabase..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-stone-950/80 border border-stone-900 focus:outline-none text-xs font-bold"
-                  style={{ focusBorderColor: currentThemeObj.primary } as React.CSSProperties}
-                />
-              </div>
-
-              {/* Filters chips */}
-              <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {[
-                  { id: 'all', label: 'Todos' },
-                  { id: 'arcade', label: 'Arcade' },
-                  { id: 'action', label: 'Acción' },
-                  { id: 'offline', label: 'Offline' }
-                ].map(filter => (
-                  <button
-                    key={filter.id}
-                    onClick={() => { playBeep(520, 0.08); setActiveFilter(filter.id); }}
-                    className="shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black tracking-wide uppercase transition-all"
-                    style={{
-                      background: activeFilter === filter.id ? `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})` : '#1c1917',
-                      border: activeFilter === filter.id ? '1px solid transparent' : '1px solid #292524',
-                      color: activeFilter === filter.id ? '#ffffff' : '#a8a29e'
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Game Grid */}
-            <div className="space-y-4">
-              <h3 className="text-xs font-black uppercase tracking-wider text-stone-500">Catálogo modular</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredGames.map((g) => {
-                  const isDownloaded = downloadedGameIds.includes(g.id);
-                  const isDownloading = downloadingGameId === g.id;
-
-                  return (
-                    <div
-                      key={g.id}
-                      className="cyber-card rounded-[24px] overflow-hidden border border-stone-900 flex flex-col justify-between transition-all"
-                      style={{ borderColor: isDownloaded ? `${currentThemeObj.secondary}30` : '#1c1917' }}
-                    >
-                      <div className="relative h-32 bg-stone-900">
-                        <img src={g.image_url} alt={g.name} className="w-full h-full object-cover opacity-85" />
-                        <span className="absolute top-2.5 left-2.5 bg-black/85 border border-stone-800 px-2.5 py-1 rounded-md text-[9px] font-bold flex items-center gap-1.5">
-                          <span dangerouslySetInnerHTML={{ __html: g.icon_svg }} className="w-3.5 h-3.5" style={{ color: currentThemeObj.primary }} />
-                          <span>{g.category.toUpperCase()}</span>
-                        </span>
-                      </div>
-
-                      <div className="p-4 space-y-3.5 flex-1 flex flex-col justify-between">
-                        <div className="space-y-1">
-                          <h4 className="font-extrabold text-sm tracking-tight">{g.name}</h4>
-                          <p className="text-[10px] text-stone-400 leading-relaxed font-medium line-clamp-3">{g.description}</p>
-                        </div>
-
-                        <div className="flex gap-2 text-[9px] font-bold text-stone-500">
-                          {g.offline_support && <span className="text-emerald-500">✓ Offline</span>}
-                          {g.multiplayer_support && <span style={{ color: currentThemeObj.primary }}>✓ WiFi Sync</span>}
-                          <span className="ml-auto text-stone-600 font-mono">{g.download_size}</span>
-                        </div>
-
-                        <div className="pt-1 flex gap-2">
-                          <button
-                            onClick={() => {
-                              playBeep(520, 0.1);
-                              setPlayingGameId(g.id);
-                              setActiveScreen('game');
-                            }}
-                            className="flex-1 py-2.5 rounded-xl text-white text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform"
-                            style={{
-                              background: `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})`,
-                              boxShadow: `0 0 10px ${currentThemeObj.primary}40`
-                            }}
-                          >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            Jugar Ahora
-                          </button>
-
-                          {!isDownloaded ? (
-                            <button
-                              onClick={() => handleDownloadGame(g.id)}
-                              disabled={isDownloading}
-                              className="px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-800 text-stone-400 font-bold hover:text-white flex items-center justify-center"
-                              title="Descargar para Offline"
-                            >
-                              {isDownloading ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" style={{ color: currentThemeObj.secondary }} />
-                              ) : (
-                                <Download className="w-4 h-4" />
-                              )}
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleDeleteGame(g.id)}
-                              className="px-3.5 py-2.5 rounded-xl bg-red-950/20 border border-red-900/30 text-red-500 font-bold flex items-center justify-center"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
+            {/* Immersive Scrollable Catalog Content only */}
+            <div className="flex-1 scrollable-y w-full px-4 py-4 space-y-5 pb-24 z-10">
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="cyber-card rounded-2xl p-3 flex items-center justify-between gap-3 border border-stone-850">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Wifi className="w-4 h-4 shrink-0" style={{ color: currentThemeObj.primary }} />
+                    <div className="min-w-0 leading-tight">
+                      <p className="text-[7px] text-stone-500 font-bold uppercase font-mono">WiFi Sync</p>
+                      <p className="text-[11px] font-black truncate">{peerConnected ? peerGamerTag : 'Desconectado'}</p>
                     </div>
-                  );
-                })}
+                  </div>
+                  <button
+                    onClick={() => { playBeep(); setActiveScreen('wifi'); }}
+                    className="px-2 py-0.5 rounded-lg bg-stone-900 text-[8px] font-bold border border-stone-800 hover:border-[#06b6d4]"
+                  >
+                    Sync
+                  </button>
+                </div>
+
+                <div className="cyber-card rounded-2xl p-3 flex items-center justify-between gap-3 border border-stone-850">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Download className="w-4 h-4 shrink-0" style={{ color: currentThemeObj.secondary }} />
+                    <div className="min-w-0 leading-tight">
+                      <p className="text-[7px] text-stone-500 font-bold uppercase font-mono">Guardados</p>
+                      <p className="text-[11px] font-black truncate">{downloadedGameIds.length} juego(s)</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { playBeep(); setActiveScreen('downloads'); }}
+                    className="px-2 py-0.5 rounded-lg bg-stone-900 text-[8px] font-bold border border-stone-800 hover:border-[#a855f7]"
+                  >
+                    Ver
+                  </button>
+                </div>
+              </div>
+
+              {/* Search & Filter bar */}
+              <div className="space-y-2.5">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-500" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar juegos en Supabase..."
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-stone-950/80 border border-stone-900 focus:outline-none text-[11px] font-bold"
+                  />
+                </div>
+
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                  {[
+                    { id: 'all', label: 'Todos' },
+                    { id: 'arcade', label: 'Arcade' },
+                    { id: 'action', label: 'Acción' },
+                    { id: 'offline', label: 'Offline' }
+                  ].map(filter => (
+                    <button
+                      key={filter.id}
+                      onClick={() => { playBeep(520, 0.08); setActiveFilter(filter.id); }}
+                      className="shrink-0 px-3.5 py-1 rounded-full text-[9px] font-black tracking-wide uppercase transition-all"
+                      style={{
+                        background: activeFilter === filter.id ? `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})` : '#16141a',
+                        border: activeFilter === filter.id ? '1px solid transparent' : '1px solid #24222a',
+                        color: activeFilter === filter.id ? '#ffffff' : '#8c8896'
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Game list */}
+              <div className="space-y-3">
+                <h3 className="text-[9px] font-black uppercase tracking-wider text-stone-500 font-mono">Listado de juegos</h3>
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredGames.map((g) => {
+                    const isDownloaded = downloadedGameIds.includes(g.id);
+                    const isDownloading = downloadingGameId === g.id;
+
+                    return (
+                      <div
+                        key={g.id}
+                        className="cyber-card rounded-[22px] overflow-hidden border border-stone-900 flex flex-col justify-between"
+                        style={{ borderColor: isDownloaded ? `${currentThemeObj.secondary}25` : '#1c1917' }}
+                      >
+                        <div className="relative h-28 bg-stone-900">
+                          <img src={g.image_url} alt={g.name} className="w-full h-full object-cover opacity-80" />
+                          <span className="absolute top-2 left-2 bg-black/80 border border-stone-850 px-2 py-0.5 rounded-md text-[8px] font-bold flex items-center gap-1">
+                            <span dangerouslySetInnerHTML={{ __html: g.icon_svg }} className="w-3 h-3" style={{ color: currentThemeObj.primary }} />
+                            <span>{g.category.toUpperCase()}</span>
+                          </span>
+                        </div>
+
+                        <div className="p-3.5 space-y-2.5">
+                          <div>
+                            <h4 className="font-extrabold text-xs tracking-tight">{g.name}</h4>
+                            <p className="text-[9px] text-stone-400 leading-snug line-clamp-2 mt-0.5">{g.description}</p>
+                          </div>
+
+                          <div className="flex gap-2 text-[8px] font-bold text-stone-500 font-mono">
+                            {g.offline_support && <span className="text-emerald-500">✓ Offline</span>}
+                            {g.multiplayer_support && <span style={{ color: currentThemeObj.primary }}>✓ WiFi Sync</span>}
+                            <span className="ml-auto text-stone-600">{g.download_size}</span>
+                          </div>
+
+                          <div className="flex gap-1.5 pt-0.5">
+                            <button
+                              onClick={() => {
+                                playBeep(520, 0.1);
+                                setPlayingGameId(g.id);
+                                setActiveScreen('game');
+                              }}
+                              className="flex-1 py-2 rounded-xl text-white text-[10px] font-black flex items-center justify-center gap-1 active:scale-[0.98] transition-transform"
+                              style={{ background: `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})` }}
+                            >
+                              <Play className="w-3 h-3 fill-current" /> Jugar
+                            </button>
+                            {!isDownloaded ? (
+                              <button
+                                onClick={() => handleDownloadGame(g.id)}
+                                disabled={isDownloading}
+                                className="px-3 py-2 rounded-xl bg-stone-900 border border-stone-850 text-stone-400 flex items-center justify-center"
+                              >
+                                {isDownloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: currentThemeObj.secondary }} /> : <Download className="w-3.5 h-3.5" />}
+                              </button>
+                            ) : (
+                              <button onClick={() => handleDeleteGame(g.id)} className="px-3 py-2 rounded-xl bg-red-950/20 border border-red-900/20 text-red-500">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </motion.div>
         )}
 
         {/* ═══════════════════════════════════════════════
-           SCREEN 3: WIFI SYNC (100% REAL PRESENCE RADAR)
+           SCREEN 3: WIFI SYNC (ZAPYA RADAR VIEWPORT - 100% IMMERSIVE)
            ═══════════════════════════════════════════════ */}
         {activeScreen === 'wifi' && (
           <motion.div
@@ -728,151 +703,133 @@ export default function LudusCloudGameHub() {
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            className="flex-1 max-w-md mx-auto w-full px-4 py-6 space-y-6 pb-24"
+            className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-center">
-                  <Wifi className="w-5 h-5" style={{ color: currentThemeObj.primary }} />
-                </div>
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-wider font-mono">Radar WiFi Direct</h2>
-                  <p className="text-[8px] text-stone-500 font-bold uppercase tracking-widest font-mono">Presencia Supabase Realtime</p>
-                </div>
+            <div className="w-full px-4 pt-4 pb-2 border-b border-stone-900 flex items-center justify-between bg-[#09070f]/90 z-20">
+              <div className="flex items-center gap-2">
+                <Wifi className="w-5 h-5" style={{ color: currentThemeObj.primary }} />
+                <h2 className="text-xs font-black uppercase tracking-wider font-mono">Radar WiFi Direct</h2>
               </div>
             </div>
 
-            {/* REAL ZAPYA RADAR VIEWPORT */}
-            <div className="cyber-card rounded-[32px] p-6 border border-stone-800 relative overflow-hidden flex flex-col items-center justify-center min-h-[380px] shadow-2xl">
-              
-              {!peerConnected && (
-                <>
-                  <div className="relative w-56 h-56 mx-auto rounded-full border border-stone-850/20 bg-stone-950/5 flex items-center justify-center">
-                    
-                    {/* Concentric rings */}
-                    <div className="absolute inset-4 rounded-full border border-stone-900" />
-                    <div className="absolute inset-12 rounded-full border border-stone-900/70" />
-                    <div className="absolute inset-20 rounded-full border border-stone-900/40" />
+            {/* Immersive non-scrollable radar sweep viewport */}
+            <div className="flex-1 w-full flex flex-col justify-center items-center px-4 space-y-5 no-touch-actions z-10 pb-24">
+              <div className="cyber-card rounded-[32px] p-5 border border-stone-850 text-center space-y-4 relative overflow-hidden w-full max-w-sm flex flex-col items-center justify-center min-h-[360px] shadow-2xl">
+                
+                {!peerConnected && (
+                  <>
+                    {/* The sweeping circular container */}
+                    <div className="relative w-48 h-48 mx-auto rounded-full border border-stone-900 bg-stone-950/30 flex items-center justify-center no-touch-actions">
+                      <div className="absolute inset-4 rounded-full border border-stone-900" />
+                      <div className="absolute inset-12 rounded-full border border-stone-900/60" />
+                      <div className="absolute inset-18 rounded-full border border-stone-900/30" />
 
-                    {/* Infinite sweeping ray */}
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-transparent to-cyan-500/10 origin-center animate-[spin_5s_linear_infinite] pointer-events-none" />
+                      {/* Infinite sweeping beam */}
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-transparent to-cyan-500/10 origin-center animate-[spin_5.5s_linear_infinite]" />
 
-                    {/* MY CENTRAL PLAYER BUBBLE */}
-                    <div className="relative w-16 h-16 rounded-full bg-[#09070f] border-2 flex flex-col items-center justify-center p-1 shadow-xl z-20 transition-all duration-300 animate-pulse"
-                         style={{ borderColor: currentThemeObj.primary, boxShadow: `0 0 15px ${currentThemeObj.primary}50` }}>
-                      <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-10 h-10" />
-                      <span className="absolute -bottom-4 bg-stone-950 border border-stone-800 px-2 py-0.5 rounded-full text-[8px] font-black max-w-[70px] truncate uppercase font-mono">
-                        {gamerTag} (Tú)
-                      </span>
-                    </div>
-
-                    {/* DISCOVERED REAL ONLINE PEERS IN RADAR */}
-                    {scannedRadarPeers.map((peer, i) => {
-                      const peerAvatarObj = PLAYER_AVATARS.find(av => av.id === peer.avatar) || PLAYER_AVATARS[1];
-                      return (
-                        <motion.button
-                          key={peer.clientId}
-                          initial={{ opacity: 0, scale: 0 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ type: 'spring', damping: 15 }}
-                          whileHover={{ scale: 1.1 }}
-                          onClick={() => handleSendRealConnectionInvite(peer)}
-                          className="absolute p-1.5 rounded-2xl bg-[#09070f] border-2 flex flex-col items-center justify-center cursor-pointer shadow-lg z-20"
-                          style={{
-                            top: `${peer.y}%`,
-                            left: `${peer.x}%`,
-                            borderColor: i % 2 === 0 ? '#a855f7' : '#e5b31c',
-                            boxShadow: `0 0 10px ${i % 2 === 0 ? '#a855f7' : '#e5b31c'}40`
-                          }}
-                        >
-                          <span dangerouslySetInnerHTML={{ __html: peerAvatarObj.icon_svg }} className="w-8 h-8" />
-                          <span className="text-[7px] font-black max-w-[50px] truncate leading-none mt-1 uppercase text-stone-400 font-mono">
-                            {peer.name}
-                          </span>
-                        </motion.button>
-                      );
-                    })}
-
-                  </div>
-
-                  {/* Scanning Status Info */}
-                  <div className="text-center space-y-1.5 z-10 pt-4">
-                    {scannedRadarPeers.length === 0 ? (
-                      <div className="flex justify-center items-center gap-1.5 text-xs text-stone-500 font-bold uppercase tracking-wider animate-pulse">
-                        <RefreshIcon className="w-3.5 h-3.5 animate-spin" style={{ color: currentThemeObj.primary }} />
-                        <span>Buscando jugadores reales en tu red Supabase...</span>
+                      {/* CENTRAL AVATAR */}
+                      <div className="relative w-14 h-14 rounded-full bg-[#09070f] border-2 flex flex-col items-center justify-center p-1 shadow-lg z-20 animate-pulse"
+                           style={{ borderColor: currentThemeObj.primary, boxShadow: `0 0 12px ${currentThemeObj.primary}40` }}>
+                        <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-9 h-9" />
+                        <span className="absolute -bottom-3 bg-stone-950 border border-stone-850 px-2 py-0.5 rounded-full text-[7px] font-black max-w-[65px] truncate uppercase font-mono text-white">
+                          {gamerTag}
+                        </span>
                       </div>
-                    ) : (
-                      <p className="text-[9px] text-cyan-400 font-black uppercase tracking-wider animate-pulse">
-                        🎯 ¡Señales de radar reales encontradas! Toca un globo para emparejar.
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
 
-              {/* CONNECTED PEER DETAILS */}
-              {peerConnected && (
-                <div className="space-y-6 text-center w-full py-6">
-                  <div className="flex justify-center items-center gap-6">
-                    <div className="w-14 h-14 rounded-full bg-stone-900 border border-stone-800 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.primary }}>
-                      <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-10 h-10" />
+                      {/* SCANNING ACTIVE DEVS POPPING UP */}
+                      {scannedRadarPeers.map((peer) => {
+                        const peerAvatarObj = PLAYER_AVATARS.find(av => av.id === peer.avatar) || PLAYER_AVATARS[1];
+                        return (
+                          <motion.button
+                            key={peer.clientId}
+                            initial={{ opacity: 0, scale: 0 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleConnectRadarPeer(peer)}
+                            className="absolute p-1.5 rounded-2xl bg-[#09070f] border-2 flex flex-col items-center justify-center cursor-pointer shadow-lg z-20"
+                            style={{
+                              top: `${peer.y}%`,
+                              left: `${peer.x}%`,
+                              borderColor: currentThemeObj.secondary,
+                              boxShadow: `0 0 8px ${currentThemeObj.secondary}30`
+                            }}
+                          >
+                            <span dangerouslySetInnerHTML={{ __html: peerAvatarObj.icon_svg }} className="w-8 h-8" />
+                            <span className="text-[7px] font-black max-w-[50px] truncate mt-1 uppercase text-stone-400 font-mono leading-none">
+                              {peer.name}
+                            </span>
+                          </motion.button>
+                        );
+                      })}
                     </div>
-                    
-                    <div className="flex flex-col items-center gap-0.5 font-bold text-[#06b6d4]">
-                      <span className="text-xl animate-pulse">⚡</span>
-                      <span className="text-[8px] uppercase tracking-wider text-stone-500">WiFi Sync</span>
+
+                    <div className="text-center space-y-1 z-10 pt-2">
+                      {scannedRadarPeers.length === 0 ? (
+                        <div className="flex justify-center items-center gap-1.5 text-[10px] text-stone-500 font-bold uppercase tracking-wider animate-pulse">
+                          <RefreshIcon className="w-3 h-3 animate-spin" style={{ color: currentThemeObj.primary }} />
+                          <span>Buscando peers activos...</span>
+                        </div>
+                      ) : (
+                        <p className="text-[9px] text-cyan-400 font-black uppercase tracking-wider font-mono animate-pulse">
+                          🎯 ¡Señales activas encontradas! Toca una para sincronizar.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* CONNECTED PEER INTERFACE */}
+                {peerConnected && (
+                  <div className="space-y-5 text-center w-full py-4">
+                    <div className="flex justify-center items-center gap-5">
+                      <div className="w-12 h-14 rounded-full bg-stone-900 border border-stone-850 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.primary }}>
+                        <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-9 h-9" />
+                      </div>
+                      <span className="text-lg animate-pulse text-[#06b6d4]">⚡</span>
+                      <div className="w-12 h-14 rounded-full bg-stone-900 border border-stone-850 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.secondary }}>
+                        <span dangerouslySetInnerHTML={{ __html: (PLAYER_AVATARS.find(av => av.id === peerAvatar) || PLAYER_AVATARS[1]).icon_svg }} className="w-9 h-9" />
+                      </div>
                     </div>
 
-                    <div className="w-14 h-14 rounded-full bg-stone-900 border border-stone-800 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.secondary }}>
-                      <span dangerouslySetInnerHTML={{ __html: (PLAYER_AVATARS.find(av => av.id === peerAvatar) || PLAYER_AVATARS[1]).icon_svg }} className="w-10 h-10" />
+                    <div className="space-y-0.5">
+                      <h4 className="font-extrabold text-xs">WiFi Sync Establecido</h4>
+                      <p className="text-[10px] text-stone-400">Jugando con: <span className="font-black text-white">{peerGamerTag}</span></p>
                     </div>
-                  </div>
 
-                  <div className="space-y-1">
-                    <h4 className="font-extrabold text-sm">Dispositivos Emparejados</h4>
-                    <p className="text-xs text-stone-400 font-medium">Canal de transmisión abierto con: <span className="font-black text-white">{peerGamerTag}</span></p>
-                  </div>
+                    <div className="py-2 px-3 rounded-xl bg-stone-950 border border-stone-900 max-w-xs mx-auto text-[9px] font-mono font-black text-emerald-500 uppercase tracking-widest flex items-center justify-center gap-1.5">
+                      <span className="w-1.5 h-2 rounded-full bg-emerald-500 animate-ping" /> Canal Listo
+                    </div>
 
-                  <div className="py-2.5 px-4 rounded-xl bg-stone-950 border border-stone-900 max-w-xs mx-auto text-[10px] font-mono font-black text-emerald-500 uppercase tracking-widest flex items-center justify-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> Sincronización Lista
+                    <button
+                      onClick={disconnectSync}
+                      className="w-full max-w-xs py-2 rounded-xl bg-red-950/20 border border-red-900/30 text-red-500 text-[10px] font-black"
+                    >
+                      Desconectar
+                    </button>
                   </div>
+                )}
+              </div>
 
+              {/* ACTION BOTTON PANEL */}
+              {!peerConnected && (
+                <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
                   <button
-                    onClick={disconnectSync}
-                    className="w-full max-w-xs py-2.5 rounded-xl bg-red-950/20 border border-red-900/30 text-red-500 text-xs font-black shadow-md"
+                    onClick={handleCreateZapyaGroup}
+                    className="py-3.5 px-4 rounded-[20px] font-black text-xs flex flex-col items-center gap-1.5 border border-stone-800 hover:border-stone-700 bg-stone-950/80 shadow-md active:scale-95 transition-transform"
                   >
-                    Desconectar Sincronización
+                    <Radio className="w-4.5 h-4.5 text-cyan-400" />
+                    <span className="font-mono uppercase tracking-wider text-[9px]">Crear Grupo</span>
+                  </button>
+                  <button
+                    onClick={() => { playBeep(520, 0.1); setZapyaModal('join_code'); }}
+                    className="py-3.5 px-4 rounded-[20px] font-black text-xs flex flex-col items-center gap-1.5 border border-stone-800 hover:border-stone-700 bg-stone-950/80 shadow-md active:scale-95 transition-transform"
+                  >
+                    <Smartphone className="w-4.5 h-4.5 text-purple-400" />
+                    <span className="font-mono uppercase tracking-wider text-[9px]">Ingresar PIN</span>
                   </button>
                 </div>
               )}
-
             </div>
-
-            {/* ACTION TRIGGERS PANEL */}
-            {!peerConnected && (
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={handleCreateZapyaGroup}
-                  className="py-3.5 px-4 rounded-[20px] font-black text-xs flex flex-col items-center gap-2 border border-stone-800 hover:border-stone-700 bg-stone-950/80 shadow-md active:scale-95 transition-transform"
-                >
-                  <Radio className="w-5 h-5 text-cyan-400" />
-                  <span>Crear Grupo QR</span>
-                </button>
-                <button
-                  onClick={() => { playBeep(520, 0.1); setZapyaModal('join_code'); }}
-                  className="py-3.5 px-4 rounded-[20px] font-black text-xs flex flex-col items-center gap-2 border border-stone-800 hover:border-stone-700 bg-stone-950/80 shadow-md active:scale-95 transition-transform"
-                >
-                  <Smartphone className="w-5 h-5 text-purple-400" />
-                  <span>Unirse por PIN</span>
-                </button>
-              </div>
-            )}
-
-            {peerConnectionError && (
-              <p className="text-xs text-red-500 font-bold text-center">⚠️ {peerConnectionError}</p>
-            )}
-
           </motion.div>
         )}
 
@@ -885,110 +842,117 @@ export default function LudusCloudGameHub() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 15 }}
-            className="flex-1 max-w-md mx-auto w-full px-4 py-6 space-y-6 pb-24"
+            className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => { playBeep(); setActiveScreen('hub'); }}
-                className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <h2 className="text-md font-black uppercase tracking-wider neon-text-blue font-mono">Mi Perfil Gamer</h2>
-                <p className="text-[9px] text-stone-500 font-bold uppercase tracking-widest font-mono">Personalización & Supabase</p>
+            <div className="w-full px-4 pt-4 pb-2 border-b border-stone-900 flex justify-between items-center bg-[#09070f]/90 z-20">
+              <div className="flex items-center gap-2">
+                <ArrowLeft className="w-4 h-4 cursor-pointer" onClick={() => { playBeep(); setActiveScreen('hub'); }} />
+                <h2 className="text-xs font-black uppercase tracking-wider font-mono">Ajustes de Perfil</h2>
               </div>
             </div>
 
-            <div className="cyber-card rounded-[28px] p-5 border border-stone-800 space-y-5">
-              
-              {/* Avatar pick */}
-              <div className="text-center space-y-2">
-                <div dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-14 h-14 mx-auto flex items-center justify-center p-1 border border-stone-800 rounded-2xl" />
-                <p className="text-xs text-stone-500 font-bold uppercase tracking-wider font-mono">Cambia tu Avatar</p>
+            {/* Immersive Scrollable form container */}
+            <div className="flex-1 scrollable-y w-full px-4 py-4 space-y-5 pb-24 z-10">
+              <div className="cyber-card rounded-[28px] p-5 border border-stone-850 space-y-5">
                 
-                <div className="flex justify-center gap-2 pt-1">
-                  {PLAYER_AVATARS.map((av) => (
-                    <button
-                      key={av.id}
-                      onClick={() => { playBeep(520, 0.08); setAvatar(av.id); }}
-                      className="w-11 h-11 rounded-xl bg-stone-900 text-lg flex items-center justify-center border transition-all hover:scale-105"
-                      style={{
-                        borderColor: avatar === av.id ? currentThemeObj.primary : '#292524',
-                        boxShadow: avatar === av.id ? `0 0 10px ${currentThemeObj.primary}40` : 'none'
-                      }}
-                      dangerouslySetInnerHTML={{ __html: av.icon_svg }}
-                    />
-                  ))}
+                {/* Avatar selection */}
+                <div className="text-center space-y-2">
+                  <div dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-14 h-14 mx-auto flex items-center justify-center p-1 border border-stone-900 rounded-2xl" />
+                  <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider font-mono">Avatar de juego</p>
+                  
+                  <div className="flex justify-center gap-2 pt-1">
+                    {PLAYER_AVATARS.map((av) => (
+                      <button
+                        key={av.id}
+                        onClick={() => { playBeep(520, 0.08); setAvatar(av.id); }}
+                        className="w-10 h-10 rounded-xl bg-stone-900 flex items-center justify-center border transition-all hover:scale-105"
+                        style={{
+                          borderColor: avatar === av.id ? currentThemeObj.primary : '#292524',
+                          boxShadow: avatar === av.id ? `0 0 10px ${currentThemeObj.primary}30` : 'none'
+                        }}
+                        dangerouslySetInnerHTML={{ __html: av.icon_svg }}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Tag input */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-stone-500 pl-1 font-mono">GamerTag</label>
-                <input
-                  type="text"
-                  value={gamerTag}
-                  onChange={(e) => {
-                    setGamerTag(e.target.value);
-                    localStorage.setItem('ludus_gamertag', e.target.value);
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl bg-stone-950 border border-stone-800 text-sm font-bold focus:outline-none focus:border-[#a855f7] font-mono text-white"
-                />
-              </div>
+                {/* Nickname */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold uppercase tracking-wider text-stone-500 pl-1 font-mono">GamerTag</label>
+                  <input
+                    type="text"
+                    value={gamerTag}
+                    onChange={(e) => {
+                      setGamerTag(e.target.value);
+                      localStorage.setItem('ludus_gamertag', e.target.value);
+                    }}
+                    className="w-full px-4 py-2 rounded-xl bg-stone-950 border border-stone-900 text-xs font-bold font-mono text-white"
+                  />
+                </div>
 
-              {/* Theme customizer */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-stone-500 pl-1 flex items-center gap-1.5 font-mono">
-                  <Palette className="w-3.5 h-3.5" /> Tema de Color Neón
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {HUB_THEMES.map(theme => (
-                    <button
-                      key={theme.id}
-                      onClick={() => {
-                        playBeep(440, 0.1);
-                        setActiveTheme(theme.id);
-                        localStorage.setItem('ludus_theme', theme.id);
-                      }}
-                      className="p-2.5 rounded-xl border text-left flex items-center justify-between transition-all"
-                      style={{
-                        borderColor: activeTheme === theme.id ? theme.primary : '#292524',
-                        background: activeTheme === theme.id ? `${theme.primary}12` : 'transparent'
-                      }}
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-black uppercase tracking-wider font-mono">{theme.label}</span>
-                        <div className="flex gap-1.5 mt-1.5">
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: theme.primary }} />
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: theme.secondary }} />
+                {/* Color themes */}
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold uppercase tracking-wider text-stone-500 pl-1 flex items-center gap-1.5 font-mono">
+                    <Palette className="w-3.5 h-3.5" /> Tema de Consola
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {HUB_THEMES.map(theme => (
+                      <button
+                        key={theme.id}
+                        onClick={() => {
+                          playBeep(440, 0.1);
+                          setActiveTheme(theme.id);
+                          localStorage.setItem('ludus_theme', theme.id);
+                        }}
+                        className="p-2.5 rounded-xl border text-left flex items-center justify-between transition-all"
+                        style={{
+                          borderColor: activeTheme === theme.id ? theme.primary : '#292524',
+                          background: activeTheme === theme.id ? `${theme.primary}12` : 'transparent'
+                        }}
+                      >
+                        <div className="flex flex-col leading-none">
+                          <span className="text-[9px] font-black uppercase tracking-wider font-mono">{theme.label}</span>
+                          <div className="flex gap-1 mt-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: theme.primary }} />
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: theme.secondary }} />
+                          </div>
                         </div>
-                      </div>
-                      {activeTheme === theme.id && <Check className="w-4 h-4" style={{ color: theme.primary }} />}
-                    </button>
-                  ))}
+                        {activeTheme === theme.id && <Check className="w-3.5 h-3.5" style={{ color: theme.primary }} />}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Sound switch */}
-              <div className="flex items-center justify-between py-2 border-t border-stone-900">
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  {soundsEnabled ? <Volume2 className="w-4 h-4" style={{ color: currentThemeObj.primary }} /> : <VolumeX className="w-4 h-4 text-stone-500" />}
-                  <span>Efectos de Sonido</span>
+                {/* Audio */}
+                <div className="flex items-center justify-between py-2 border-t border-stone-900">
+                  <div className="flex items-center gap-2 text-xs font-bold font-mono">
+                    {soundsEnabled ? <Volume2 className="w-4 h-4" style={{ color: currentThemeObj.primary }} /> : <VolumeX className="w-4 h-4 text-stone-500" />}
+                    <span>Efectos de sonido</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = !soundsEnabled;
+                      setSoundsEnabled(next);
+                      if (next) playBeep(520, 0.08);
+                    }}
+                    className="w-11 h-6 rounded-full p-1 transition-all"
+                    style={{ backgroundColor: soundsEnabled ? currentThemeObj.primary : '#292524' }}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white transition-all ${soundsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    const next = !soundsEnabled;
-                    setSoundsEnabled(next);
-                    if (next) playBeep(520, 0.08);
-                  }}
-                  className="w-11 h-6 rounded-full p-1 transition-all"
-                  style={{ backgroundColor: soundsEnabled ? currentThemeObj.primary : '#292524' }}
-                >
-                  <div className={`w-4 h-4 rounded-full bg-white transition-all ${soundsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                </button>
-              </div>
 
+                {/* Static indicator info of Supabase connection */}
+                <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-900 space-y-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 font-mono text-emerald-500">
+                    <Database className="w-3.5 h-3.5" /> Supabase Integrado
+                  </span>
+                  <p className="text-[8px] text-stone-500 leading-normal font-medium">
+                    Conectado directamente por variables de entorno del servidor. Toda la red de radar de Zapya y el listado de juegos operan de forma automatizada.
+                  </p>
+                </div>
+
+              </div>
             </div>
           </motion.div>
         )}
@@ -1002,83 +966,75 @@ export default function LudusCloudGameHub() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 15 }}
-            className="flex-1 max-w-md mx-auto w-full px-4 py-6 space-y-6 pb-24"
+            className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => { playBeep(); setActiveScreen('hub'); }}
-                className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 hover:border-stone-700"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <h2 className="text-md font-black uppercase tracking-wider neon-text-blue">Descargas Locales</h2>
-                <p className="text-[9px] text-stone-500 font-bold uppercase tracking-widest font-mono">Almacenamiento Offline</p>
-              </div>
-            </div>
-
-            {/* Storage space */}
-            <div className="cyber-card rounded-[24px] p-4 flex items-center justify-between border border-stone-800">
+            <div className="w-full px-4 pt-4 pb-2 border-b border-stone-900 flex justify-between items-center bg-[#09070f]/90 z-20">
               <div className="flex items-center gap-2">
-                <HardDrive className="w-5 h-5" style={{ color: currentThemeObj.secondary }} />
-                <div>
-                  <p className="text-[9px] text-stone-500 font-bold uppercase">Espacio de Almacenamiento</p>
-                  <p className="text-xs font-black font-mono">
-                    {downloadedGameIds.length * 1.1} MB usados / 512 MB disponibles
-                  </p>
-                </div>
+                <ArrowLeft className="w-4 h-4 cursor-pointer" onClick={() => { playBeep(); setActiveScreen('hub'); }} />
+                <h2 className="text-xs font-black uppercase tracking-wider font-mono">Descargas Locales</h2>
               </div>
             </div>
 
-            {/* List */}
-            <div className="space-y-2">
-              {games.filter(g => downloadedGameIds.includes(g.id)).map((p) => (
-                <div
-                  key={p.id}
-                  className="cyber-card rounded-[20px] p-3 flex items-center justify-between gap-3 border border-stone-900"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span dangerouslySetInnerHTML={{ __html: p.icon_svg }} className="bg-stone-900 w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ color: currentThemeObj.primary }} />
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-extrabold truncate">{p.name}</h4>
-                      <p className="text-[9px] text-stone-500 font-bold uppercase">
-                        Peso: {p.download_size} · Listo para Offline
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => {
-                        playBeep(520, 0.1);
-                        setPlayingGameId(p.id);
-                        setActiveScreen('game');
-                      }}
-                      className="p-2.5 rounded-xl text-white font-bold"
-                      style={{ background: `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})` }}
-                    >
-                      <Play className="w-4 h-4 fill-current" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteGame(p.id)}
-                      className="p-2.5 rounded-xl bg-red-950/20 border border-red-900/30 text-red-500"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {downloadedGameIds.length === 0 && (
-                <div className="py-16 text-center space-y-3">
-                  <p className="text-4xl text-stone-700">💾</p>
-                  <div>
-                    <h4 className="font-extrabold text-sm">Sin descargas aún</h4>
-                    <p className="text-xs text-stone-500 max-w-[200px] mx-auto mt-1">
-                      Descarga tus juegos favoritos del catálogo en la portada del Hub.
+            {/* Content */}
+            <div className="flex-1 scrollable-y w-full px-4 py-4 space-y-4 pb-24 z-10">
+              <div className="cyber-card rounded-[22px] p-4 flex items-center justify-between border border-stone-850">
+                <div className="flex items-center gap-2.5">
+                  <HardDrive className="w-5 h-5" style={{ color: currentThemeObj.secondary }} />
+                  <div className="leading-tight">
+                    <p className="text-[8px] text-stone-500 font-bold uppercase font-mono">Espacio de Almacenamiento</p>
+                    <p className="text-xs font-black font-mono">
+                      {downloadedGameIds.length * 1.1} MB usados / 512 MB disponibles
                     </p>
                   </div>
                 </div>
-              )}
+              </div>
+
+              <div className="space-y-2">
+                {games.filter(g => downloadedGameIds.includes(g.id)).map((p) => (
+                  <div
+                    key={p.id}
+                    className="cyber-card rounded-[20px] p-3 flex items-center justify-between gap-3 border border-stone-900"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span dangerouslySetInnerHTML={{ __html: p.icon_svg }} className="bg-stone-900 w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ color: currentThemeObj.primary }} />
+                      <div className="min-w-0 leading-tight">
+                        <h4 className="text-xs font-extrabold truncate">{p.name}</h4>
+                        <p className="text-[8px] text-stone-500 font-bold font-mono mt-0.5">
+                          Peso: {p.download_size} · Listo Offline
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          playBeep(520, 0.1);
+                          setPlayingGameId(p.id);
+                          setActiveScreen('game');
+                        }}
+                        className="p-2 rounded-lg text-white font-bold"
+                        style={{ background: `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})` }}
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                      </button>
+                      <button onClick={() => handleDeleteGame(p.id)} className="p-2 rounded-lg bg-red-950/20 border border-red-900/20 text-red-500">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {downloadedGameIds.length === 0 && (
+                  <div className="py-16 text-center space-y-3">
+                    <p className="text-4xl text-stone-700">💾</p>
+                    <div>
+                      <h4 className="font-extrabold text-sm">Sin descargas aún</h4>
+                      <p className="text-xs text-stone-500 max-w-[200px] mx-auto mt-1 leading-normal">
+                        Descarga tus juegos favoritos del catálogo en la portada del Hub.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
@@ -1120,7 +1076,7 @@ export default function LudusCloudGameHub() {
             </div>
 
             {/* Game Canvas Container */}
-            <div className="flex-1 w-full flex items-center justify-center relative bg-stone-950 overflow-hidden select-none">
+            <div className="flex-1 w-full flex items-center justify-center relative bg-stone-950 overflow-hidden select-none no-touch-actions">
               
               {playingGameId === 'pong-neo' && (
                 <PongGame peerConnected={peerConnected} peerGamerTag={peerGamerTag} soundsEnabled={soundsEnabled} />
@@ -1140,13 +1096,13 @@ export default function LudusCloudGameHub() {
 
       </AnimatePresence>
 
-      {/* ─── Immersive Floating Real Handshake Overlays ─── */}
+      {/* ─── Immersive Floating Zapya Overlays ─── */}
       <AnimatePresence>
         
-        {/* INTERACTIVE INCOMING REQUEST POPUP (100% REAL HANDSHAKE INVITATION!) */}
+        {/* INTERACTIVE INCOMING REQUEST POPUP (ZAPYA STYLE ACCEPT INVITATION!) */}
         {incomingInvite && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-touch-actions">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/85" />
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
@@ -1154,12 +1110,12 @@ export default function LudusCloudGameHub() {
               className="relative w-full max-w-xs bg-[#120e1e] border-2 rounded-[32px] p-6 text-center space-y-4 z-10 shadow-2xl"
               style={{ borderColor: currentThemeObj.primary }}
             >
-              <div className="w-12 h-12 rounded-full bg-stone-900 border border-stone-800 flex items-center justify-center mx-auto text-xl">
+              <div className="w-12 h-12 rounded-full bg-stone-900 border border-stone-800 flex items-center justify-center mx-auto text-xl animate-bounce">
                 🤝
               </div>
               <div className="space-y-1">
                 <h3 className="font-extrabold text-sm text-white">Invitación WiFi Sync</h3>
-                <p className="text-xs text-stone-300">
+                <p className="text-xs text-stone-300 leading-snug">
                   <span className="font-black text-white">{incomingInvite.fromTag}</span> quiere sincronizar sus juegos y pantallas contigo.
                 </p>
               </div>
@@ -1185,7 +1141,7 @@ export default function LudusCloudGameHub() {
 
         {/* MODAL: CREATE GROUP (HOST VIEW WITH QR CODE & PIN) */}
         {zapyaModal === 'create_group' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-touch-actions">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} exit={{ opacity: 0 }} onClick={disconnectSync} className="absolute inset-0 bg-black" />
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
@@ -1198,7 +1154,7 @@ export default function LudusCloudGameHub() {
                 <button onClick={disconnectSync} className="p-1 rounded-full hover:bg-stone-850"><X className="w-4 h-4 text-stone-500" /></button>
               </div>
 
-              {/* Glowing Custom Vector QR CODE */}
+              {/* Glowing QR CODE */}
               <div className="w-40 h-40 bg-white p-3.5 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-cyan-500/15 relative">
                 <QrCode className="w-full h-full text-stone-950" strokeWidth={1.5} />
                 <div className="absolute inset-0 border-2 border-dashed border-cyan-400 rounded-3xl animate-pulse pointer-events-none scale-105" />
@@ -1220,9 +1176,9 @@ export default function LudusCloudGameHub() {
           </div>
         )}
 
-        {/* MODAL: JOIN BY CODE */}
+        {/* MODAL: JOIN BY CODE (PIN MANUAL INPUT) */}
         {zapyaModal === 'join_code' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-touch-actions">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} exit={{ opacity: 0 }} onClick={() => setZapyaModal('none')} className="absolute inset-0 bg-black" />
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
@@ -1271,10 +1227,10 @@ export default function LudusCloudGameHub() {
 
       </AnimatePresence>
 
-      {/* Bottom Navigation */}
+      {/* Strict Fixed Navigation Bar at the Bottom */}
       {activeScreen !== 'loading' && activeScreen !== 'game' && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 p-4 pointer-events-none">
-          <div className="max-w-md mx-auto rounded-[24px] bg-[#120e1e]/85 backdrop-filter blur-md border border-stone-800 p-2 flex justify-around items-center pointer-events-auto shadow-2xl">
+        <div className="w-full px-4 pb-4 pt-1 bg-gradient-to-t from-[#09070f] via-[#09070f]/90 to-transparent z-20">
+          <div className="max-w-md mx-auto rounded-[24px] bg-[#120e1e]/85 backdrop-filter blur-md border border-stone-850 p-2 flex justify-around items-center shadow-2xl">
             {[
               { id: 'hub', label: 'Catálogo', icon: Gamepad2 },
               { id: 'wifi', label: 'WiFi Sync', icon: Wifi },
