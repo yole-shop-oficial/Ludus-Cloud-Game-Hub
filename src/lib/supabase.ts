@@ -1,11 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Pre-configured default Project 1 credentials from Gestor-Manager as fallback
-const DEFAULT_URL = 'https://lustmqeqbninkavixttz.supabase.co';
-const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1c3RtcWVxYm5pbmthdml4dHR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMTMxNjUsImV4cCI6MjA5ODg4OTE2NX0.hvBQsxSTYUzlLPgjCpALmTBkvvaF885-gJlBH-w1KdI';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_KEY;
+// Reads from standard Vercel environment variables.
+// Uses mock placeholders during build/prerendering to prevent build crashes, 
+// which are automatically overridden in runtime by real Vercel environment variables.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project.supabase.co';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMTMxNjV9.placeholder';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -14,7 +13,7 @@ export interface Game {
   name: string;
   description: string;
   category: 'arcade' | 'action' | 'puzzle' | 'sports';
-  icon_svg: string; // Neon SVGs created dynamically (no emojis)
+  icon_svg: string; // Pure vector SVGs
   image_url: string;
   offline_support: boolean;
   multiplayer_support: boolean;
@@ -37,7 +36,6 @@ export interface SyncSession {
   updated_at?: string;
 }
 
-// Fallback high-quality local games catalog (using pure custom inline SVGs - NO EMOJIS!)
 export const LOCAL_GAMES: Game[] = [
   {
     id: 'pong-neo',
@@ -76,6 +74,10 @@ export const LOCAL_GAMES: Game[] = [
 
 // Helper to query game list from Supabase with LocalStorage fallback
 export async function getGames(): Promise<Game[]> {
+  // If we are still using placeholders (e.g. build step), skip query and immediately return local games
+  if (supabaseUrl.includes('placeholder-project')) {
+    return getLocalGames();
+  }
   try {
     const { data, error } = await supabase
       .from('ludus_games')
@@ -111,7 +113,6 @@ function getLocalGames(): Game[] {
 export async function createSyncSession(hostName: string, hostId: string): Promise<SyncSession | null> {
   const code = Math.floor(1000 + Math.random() * 9000).toString();
   try {
-    // Check if code is already used, then clean up old sessions
     await supabase.from('ludus_sync_sessions').delete().eq('code', code);
     
     const { data, error } = await supabase
@@ -148,7 +149,6 @@ export async function joinSyncSession(code: string, clientName: string, clientId
     if (fetchError) throw fetchError;
     if (!session) throw new Error('Sesión no encontrada o ya está activa.');
 
-    // Update with client information
     const { data, error: updateError } = await supabase
       .from('ludus_sync_sessions')
       .update({

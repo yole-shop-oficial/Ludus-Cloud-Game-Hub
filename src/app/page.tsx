@@ -68,12 +68,7 @@ export default function LudusCloudGameHub() {
   const [soundsEnabled, setSoundsEnabled] = useState(true);
   const [activeTheme, setActiveTheme] = useState('nebula');
 
-  // Supabase Custom Connection Form State
-  const [customSupaUrl, setCustomSupaUrl] = useState('');
-  const [customSupaKey, setCustomSupaKey] = useState('');
-  const [supabaseConnected, setSupabaseConnected] = useState(true);
-  const [isTestingSupa, setIsTestingSupa] = useState(false);
-  const [supaValidationMsg, setSupaValidationMsg] = useState('');
+  const supabaseConnected = true;
 
   const [clientId, setClientId] = useState('');
 
@@ -148,11 +143,6 @@ export default function LudusCloudGameHub() {
     if (savedDownloads) {
       try { setDownloadedGames(JSON.parse(savedDownloads)); } catch { /* ignore */ }
     }
-
-    const savedSupaUrl = localStorage.getItem('ludus_custom_supa_url');
-    if (savedSupaUrl) setCustomSupaUrl(savedSupaUrl);
-    const savedSupaKey = localStorage.getItem('ludus_custom_supa_key');
-    if (savedSupaKey) setCustomSupaKey(savedSupaKey);
 
     return () => clearInterval(interval);
   }, []);
@@ -997,68 +987,6 @@ export default function LudusCloudGameHub() {
                 >
                   <div className={`w-4 h-4 rounded-full bg-white transition-all ${soundsEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
-              </div>
-
-              {/* Custom Supabase Settings */}
-              <div className="bg-stone-950/80 p-4 rounded-2xl border border-stone-900 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: currentThemeObj.secondary }}>
-                    <Database className="w-3.5 h-3.5" /> Supabase Personalizado
-                  </span>
-                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold ${
-                    supabaseConnected ? 'bg-emerald-950/40 text-emerald-500 border border-emerald-900/30' : 'bg-stone-900 text-stone-500'
-                  }`}>
-                    {supabaseConnected ? 'Verificado' : 'Offline'}
-                  </span>
-                </div>
-                
-                <p className="text-[9px] text-stone-500 leading-normal font-medium">
-                  Introduce las credenciales de tu proyecto de Supabase para cargar juegos reales desde tu base de datos y usar tu propia sincronización de radar.
-                </p>
-
-                <form onSubmit={handleValidateCustomSupabase} className="space-y-3">
-                  <div>
-                    <label className="text-[8px] font-bold text-stone-500 uppercase block mb-1">Project URL</label>
-                    <input
-                      type="text"
-                      value={customSupaUrl}
-                      onChange={(e) => setCustomSupaUrl(e.target.value)}
-                      placeholder="https://your-project.supabase.co"
-                      className="w-full px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[10px] font-mono font-bold focus:outline-none focus:border-cyan-500 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[8px] font-bold text-stone-500 uppercase block mb-1">Anon API Key</label>
-                    <input
-                      type="password"
-                      value={customSupaKey}
-                      onChange={(e) => setCustomSupaKey(e.target.value)}
-                      placeholder="eyJhbGci..."
-                      className="w-full px-3 py-2 rounded-xl bg-stone-900 border border-stone-800 text-[10px] font-mono font-bold focus:outline-none focus:border-cyan-500 text-white"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isTestingSupa}
-                    className="w-full py-2 rounded-xl font-bold text-[10px] uppercase text-white flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
-                    style={{ background: `linear-gradient(135deg, ${currentThemeObj.primary}, ${currentThemeObj.secondary})` }}
-                  >
-                    {isTestingSupa ? (
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Check className="w-3 h-3" />
-                    )}
-                    Validar & Guardar
-                  </button>
-                </form>
-
-                {supaValidationMsg && (
-                  <div className="p-3 bg-stone-900 rounded-xl border border-stone-800 flex gap-2 items-start">
-                    <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <p className="text-[9px] text-stone-400 font-bold leading-normal">{supaValidationMsg}</p>
-                  </div>
-                )}
               </div>
 
             </div>
