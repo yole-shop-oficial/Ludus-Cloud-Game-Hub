@@ -29,7 +29,6 @@ import {
   QrCode,
   Smartphone,
   Scan,
-  RefreshCw as RefreshIcon,
   ChevronRight,
   MessageSquare
 } from 'lucide-react';
@@ -132,7 +131,6 @@ export default function LudusCloudGameHub() {
           clearInterval(interval);
           setTimeout(() => {
             setActiveScreen('hub');
-            // Trigger tutorial if first time
             const onboardingDone = localStorage.getItem('ludus_onboarding_done');
             if (!onboardingDone) {
               setShowOnboarding(true);
@@ -553,6 +551,36 @@ export default function LudusCloudGameHub() {
         </div>
       )}
 
+      {/* ─── UNIFIED SINGLE GLOBAL COLLAPSIBLE HEADER ─── */}
+      {activeScreen !== 'loading' && activeScreen !== 'game' && isHeaderExpanded && (
+        <div className="w-full bg-[#09070f] border-b border-stone-900 z-40 shrink-0">
+          <div 
+            className="w-full px-4 pb-2 flex justify-between items-center"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.2rem)' }}
+          >
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-7 h-7" style={{ color: currentThemeObj.primary }}>
+                <path d="M12 2a4 4 0 0 0-4 4v4H5a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3h-3V6a4 4 0 0 0-4-4z" />
+              </svg>
+              <div>
+                <h1 className="text-xs font-black tracking-widest uppercase leading-none" style={{ color: currentThemeObj.primary }}>
+                  Ludus Cloud
+                </h1>
+                <p className="text-[7px] font-bold tracking-widest uppercase mt-0.5" style={{ color: currentThemeObj.secondary }}>Game Hub</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { playBeep(); setActiveScreen('profile'); }}
+              className="flex items-center gap-2 px-3 py-1 rounded-full bg-stone-900 border border-stone-850"
+            >
+              <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-4 h-4" />
+              <span className="text-[10px] font-bold font-mono tracking-tight max-w-[80px] truncate text-white">{gamerTag}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         
         {/* ═══════════════════════════════════════════════
@@ -619,43 +647,6 @@ export default function LudusCloudGameHub() {
             animate={{ opacity: 1, y: 0 }}
             className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            {/* COLLAPSIBLE HEADER WRAPPER */}
-            <AnimatePresence>
-              {isHeaderExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="w-full bg-[#09070f] border-b border-stone-900 z-40 overflow-hidden shrink-0"
-                >
-                  <div 
-                    className="w-full px-4 pb-2 flex justify-between items-center"
-                    style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.2rem)' }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="w-7 h-7" style={{ color: currentThemeObj.primary }}>
-                        <path d="M12 2a4 4 0 0 0-4 4v4H5a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3a3 3 0 0 0-3-3h-3V6a4 4 0 0 0-4-4z" />
-                      </svg>
-                      <div>
-                        <h1 className="text-xs font-black tracking-widest uppercase leading-none" style={{ color: currentThemeObj.primary }}>
-                          Ludus Cloud
-                        </h1>
-                        <p className="text-[7px] font-bold tracking-widest uppercase mt-0.5" style={{ color: currentThemeObj.secondary }}>Game Hub</p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => { playBeep(); setActiveScreen('profile'); }}
-                      className="flex items-center gap-2 px-3 py-1 rounded-full bg-stone-900 border border-stone-850"
-                    >
-                      <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-4 h-4" />
-                      <span className="text-[10px] font-bold font-mono tracking-tight max-w-[80px] truncate text-white">{gamerTag}</span>
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Immersive Scrollable Catalog Content only */}
             <div 
               className="flex-1 scrollable-y w-full px-4 py-4 space-y-5 pb-24 z-10"
@@ -799,7 +790,7 @@ export default function LudusCloudGameHub() {
         )}
 
         {/* ═══════════════════════════════════════════════
-           SCREEN 3: WIFI SYNC (ZAPYA RADAR VIEWPORT - COLLAPSIBLE HEADER)
+           SCREEN 3: WIFI SYNC (ZAPYA RADAR VIEWPORT - SOLID THEME)
            ═══════════════════════════════════════════════ */}
         {activeScreen === 'wifi' && (
           <motion.div
@@ -809,28 +800,6 @@ export default function LudusCloudGameHub() {
             exit={{ opacity: 0, scale: 0.98 }}
             className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            {/* COLLAPSIBLE HEADER WRAPPER */}
-            <AnimatePresence>
-              {isHeaderExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="w-full bg-[#09070f] border-b border-stone-900 z-40 overflow-hidden shrink-0"
-                >
-                  <div 
-                    className="w-full px-4 pb-2 flex items-center justify-between"
-                    style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.2rem)' }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Wifi className="w-5 h-5" style={{ color: currentThemeObj.primary }} />
-                      <h2 className="text-xs font-black uppercase tracking-wider font-mono">Radar WiFi Direct</h2>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Immersive radar */}
             <div 
               className="flex-1 w-full flex flex-col justify-center items-center px-4 space-y-5 no-touch-actions z-10 pb-24"
@@ -851,7 +820,7 @@ export default function LudusCloudGameHub() {
                       <div className="relative w-14 h-14 rounded-full bg-[#09070f] border-2 flex flex-col items-center justify-center p-1 shadow-lg z-20 animate-pulse"
                            style={{ borderColor: currentThemeObj.primary }}>
                         <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-9 h-9" />
-                        <span className="absolute -bottom-3 bg-stone-950 border border-stone-850 px-2 py-0.5 rounded-full text-[7px] font-black max-w-[65px] truncate uppercase font-mono text-white">
+                        <span className="absolute -bottom-3 bg-stone-950 border border-stone-855 px-2 py-0.5 rounded-full text-[7px] font-black max-w-[65px] truncate uppercase font-mono text-white">
                           {gamerTag}
                         </span>
                       </div>
@@ -953,7 +922,7 @@ export default function LudusCloudGameHub() {
         )}
 
         {/* ═══════════════════════════════════════════════
-           SCREEN 4: PERFIL Y AJUSTES (COLLAPSIBLE HEADER)
+           SCREEN 4: PERFIL Y AJUSTES
            ═══════════════════════════════════════════════ */}
         {activeScreen === 'profile' && (
           <motion.div
@@ -963,28 +932,6 @@ export default function LudusCloudGameHub() {
             exit={{ opacity: 0, y: 15 }}
             className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            {/* COLLAPSIBLE HEADER WRAPPER */}
-            <AnimatePresence>
-              {isHeaderExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="w-full bg-[#09070f] border-b border-stone-900 z-40 overflow-hidden shrink-0"
-                >
-                  <div 
-                    className="w-full px-4 pb-2 flex justify-between items-center bg-[#09070f] z-20"
-                    style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.2rem)' }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <ArrowLeft className="w-4 h-4 cursor-pointer" onClick={() => { playBeep(); setActiveScreen('hub'); }} />
-                      <h2 className="text-xs font-black uppercase tracking-wider font-mono">Ajustes de Perfil</h2>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Scrollable form */}
             <div 
               className="flex-1 scrollable-y w-full px-4 py-4 space-y-5 pb-24 z-10"
@@ -1093,7 +1040,7 @@ export default function LudusCloudGameHub() {
         )}
 
         {/* ═══════════════════════════════════════════════
-           SCREEN 5: DESCARGAS (OFFLINE STORAGE - COLLAPSIBLE HEADER)
+           SCREEN 5: DESCARGAS (OFFLINE STORAGE)
            ═══════════════════════════════════════════════ */}
         {activeScreen === 'downloads' && (
           <motion.div
@@ -1103,28 +1050,6 @@ export default function LudusCloudGameHub() {
             exit={{ opacity: 0, y: 15 }}
             className="absolute inset-0 h-full w-full flex flex-col justify-between"
           >
-            {/* COLLAPSIBLE HEADER WRAPPER */}
-            <AnimatePresence>
-              {isHeaderExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="w-full bg-[#09070f] border-b border-stone-900 z-40 overflow-hidden shrink-0"
-                >
-                  <div 
-                    className="w-full px-4 pb-2 flex justify-between items-center bg-[#09070f] z-20"
-                    style={{ paddingTop: 'calc(env(safe-area-inset-top) + 1.2rem)' }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <ArrowLeft className="w-4 h-4 cursor-pointer" onClick={() => { playBeep(); setActiveScreen('hub'); }} />
-                      <h2 className="text-xs font-black uppercase tracking-wider font-mono">Descargas Locales</h2>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Content */}
             <div 
               className="flex-1 scrollable-y w-full px-4 py-4 space-y-4 pb-24 z-10"
@@ -1210,7 +1135,7 @@ export default function LudusCloudGameHub() {
                   setPlayingGameId(null);
                   setActiveScreen('hub');
                 }}
-                className="px-3.5 py-1.5 rounded-full bg-black/60 border border-stone-800 hover:border-stone-700 text-xs font-bold flex items-center gap-1 text-white font-mono"
+                className="px-3.5 py-1.5 rounded-full bg-black/60 border border-stone-850 hover:border-stone-700 text-xs font-bold flex items-center gap-1 text-white font-mono"
               >
                 <ArrowLeft className="w-4 h-4" /> Salir del Hub
               </button>
@@ -1425,7 +1350,7 @@ export default function LudusCloudGameHub() {
           </div>
         )}
 
-        {/* ─── PREMIUM ONBOARDING INTERACTIVE TUTORIAL (ZAPYA RADAR & IMMERSIVE BAR) ─── */}
+        {/* PREMIUM ONBOARDING INTERACTIVE TUTORIAL */}
         {showOnboarding && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-touch-actions">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.85 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black" />
@@ -1445,7 +1370,7 @@ export default function LudusCloudGameHub() {
                 <p className="text-xs text-stone-300 leading-relaxed font-medium">
                   Para darte una experiencia de consola de juegos inmersiva de pantalla completa en tu móvil, **hemos guardado la barra de perfil de arriba por defecto**.
                 </p>
-                <div className="p-3 bg-stone-950/80 border border-stone-900 rounded-2xl text-[10px] text-left leading-normal space-y-1.5">
+                <div className="p-3 bg-stone-950/80 border border-stone-900 rounded-2xl text-[10px] text-left leading-normal space-y-1.5 font-sans">
                   <p className="text-cyan-400 font-black flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5 shrink-0" /> ¿Cómo mostrar / ocultar el menú?
                   </p>
@@ -1471,7 +1396,7 @@ export default function LudusCloudGameHub() {
       {/* Strict Fixed Navigation Bar at the Bottom */}
       {activeScreen !== 'loading' && activeScreen !== 'game' && (
         <div 
-          className="w-full px-4 pb-4 pt-1 bg-[#09070f] border-t border-stone-900 z-20"
+          className="w-full px-4 pb-4 pt-1 bg-[#09070f] border-t border-stone-900 z-20 shrink-0"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
         >
           <div className="max-w-md mx-auto rounded-[24px] bg-[#120e1e] border border-stone-855 p-2 flex justify-around items-center shadow-2xl">
@@ -1487,7 +1412,7 @@ export default function LudusCloudGameHub() {
                 <button
                   key={tab.id}
                   onClick={() => { playBeep(520, 0.05); setActiveScreen(tab.id); }}
-                  className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all"
+                  className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all font-mono"
                   style={{ color: isActive ? currentThemeObj.primary : '#a8a29e' }}
                 >
                   <Icon className={`w-5 h-5 ${isActive ? 'scale-110' : ''}`} style={{ filter: isActive ? `drop-shadow(0 0 5px ${currentThemeObj.primary}80)` : 'none' }} />
@@ -1810,7 +1735,7 @@ function SnakeGame({ soundsEnabled }: { soundsEnabled: boolean }) {
   };
 
   return (
-    <div className="w-full h-full max-w-md flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions">
+    <div className="w-full h-full max-w-md flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions font-mono">
       <div className="flex justify-between w-full font-mono text-[10px] font-bold text-[#a855f7] tracking-wider">
         <span>SCORE: <span className="text-white text-lg font-black">{score}</span></span>
         <span>HIGHSCORE: <span className="text-[#06b6d4] text-lg font-black">{highScore}</span></span>
@@ -2036,7 +1961,7 @@ function MeteorGame({ soundsEnabled }: { soundsEnabled: boolean }) {
   };
 
   return (
-    <div className="w-full h-full max-w-md flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions">
+    <div className="w-full h-full max-w-md flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions font-mono">
       <div className="flex justify-between w-full font-mono text-[10px] font-bold text-[#e5b31c] tracking-wider">
         <span>SCORE: <span className="text-white text-lg font-black">{score}</span></span>
         <span>HIGHSCORE: <span className="text-[#06b6d4] text-lg font-black">{highScore}</span></span>
