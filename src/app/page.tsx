@@ -224,7 +224,9 @@ export default function LudusCloudGameHub() {
     };
   }, [activeScreen, gamerTag, avatar, clientId]);
 
-  const parsePresenceState = (state: Record<string, any[]>) => {
+  // CRASH-PROOF PRESENCE PARSING FOR RADAR
+  const parsePresenceState = (state: Record<string, any[]> | null | undefined) => {
+    if (!state) return;
     const peers: any[] = [];
     let count = 0;
     
@@ -379,7 +381,6 @@ export default function LudusCloudGameHub() {
         )
         .subscribe();
     } else {
-      // FIX: DO NOT dismiss the modal! Set error state and let them cancel manually
       setConnectionRole('none');
       setPairingCode('----');
       setIsSearchingPeer(false);
@@ -533,22 +534,22 @@ export default function LudusCloudGameHub() {
       } as React.CSSProperties}
     >
       
-      {/* ─── SLIDING FLOATING HEADER TAB HANDLE ─── */}
+      {/* ─── SLIDING FLOATING HEADER TAB HANDLE AT THE BOTTOM ─── */}
       {activeScreen !== 'loading' && activeScreen !== 'game' && (
-        <div className="fixed top-0 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
           <button
             onClick={() => {
               playBeep(520, 0.05);
               setIsHeaderExpanded(!isHeaderExpanded);
             }}
-            className="px-4 py-1.5 rounded-b-2xl bg-[#120e1e] border-x border-b text-[10px] font-black uppercase tracking-widest font-mono flex items-center gap-1.5 shadow-xl active:scale-95 transition-transform"
+            className="px-5 py-2.5 rounded-full bg-[#120e1e] border text-[10px] font-black uppercase tracking-widest font-mono flex items-center gap-1.5 shadow-2xl active:scale-95 transition-transform"
             style={{
               borderColor: currentThemeObj.primary,
-              boxShadow: `0 3px 12px ${currentThemeObj.primary}15`
+              boxShadow: `0 0 15px ${currentThemeObj.primary}25`
             }}
           >
             <span>{isHeaderExpanded ? 'Ocultar Panel' : 'Mostrar Panel'}</span>
-            <Sliders className="w-3 h-3 animate-pulse" style={{ color: currentThemeObj.primary }} />
+            <Sliders className="w-3.5 h-3.5 animate-pulse" style={{ color: currentThemeObj.primary }} />
           </button>
         </div>
       )}
@@ -687,7 +688,7 @@ export default function LudusCloudGameHub() {
                       >
                         <div className="relative h-28 bg-stone-900">
                           <img src={g.image_url} alt={g.name} className="w-full h-full object-cover opacity-80" />
-                          <span className="absolute top-2 left-2 bg-black/80 border border-stone-850 px-2 py-0.5 rounded-md text-[8px] font-bold flex items-center gap-1">
+                          <span className="absolute top-2 left-2 bg-black/80 border border-stone-855 px-2 py-0.5 rounded-md text-[8px] font-bold flex items-center gap-1">
                             <span dangerouslySetInnerHTML={{ __html: g.icon_svg }} className="w-3 h-3" style={{ color: currentThemeObj.primary }} />
                             <span>{g.category.toUpperCase()}</span>
                           </span>
@@ -738,7 +739,7 @@ export default function LudusCloudGameHub() {
         )}
 
         {/* ═══════════════════════════════════════════════
-           SCREEN 3: WIFI SYNC (ZAPYA RADAR VIEWPORT - SOLID THEME)
+           SCREEN 3: WIFI SYNC (ZAPYA RADAR VIEWPORT - CRASH-PROOF)
            ═══════════════════════════════════════════════ */}
         {activeScreen === 'wifi' && (
           <motion.div
@@ -753,11 +754,11 @@ export default function LudusCloudGameHub() {
               className="flex-1 w-full flex flex-col justify-center items-center px-4 space-y-4 no-touch-actions z-10 pb-24"
               style={{ paddingTop: isHeaderExpanded ? '1rem' : 'calc(env(safe-area-inset-top) + 2rem)' }}
             >
-              {/* IMMERSIVE INFO BANNER REGARDING HARDWARE DISCOVERY CAPABILITIES */}
+              {/* IMMERSIVE INFO BANNER */}
               <div className="w-full max-w-sm p-3 bg-yellow-950/20 border border-yellow-900/30 rounded-2xl flex gap-2.5 items-start text-left">
                 <AlertTriangle className="w-4.5 h-4.5 text-yellow-500 shrink-0 mt-0.5" />
                 <div className="space-y-0.5 font-sans">
-                  <h4 className="text-[10px] font-black text-yellow-500 uppercase leading-none">Importante para Sincronizar:</h4>
+                  <h4 className="text-[10px] font-black text-yellow-500 uppercase leading-none font-mono">Importante para Sincronizar:</h4>
                   <p className="text-[8px] text-stone-400 font-bold leading-relaxed">
                     Los navegadores web no tienen permisos del celular para encender el WiFi físico de tu teléfono. Por favor, **asegúrate de encender el WiFi / Hotspot manualmente en tus ajustes de Android/iOS** antes de sincronizar.
                   </p>
@@ -829,7 +830,7 @@ export default function LudusCloudGameHub() {
                 {peerConnected && (
                   <div className="space-y-5 text-center w-full py-4">
                     <div className="flex justify-center items-center gap-5">
-                      <div className="w-12 h-14 rounded-full bg-stone-900 border border-stone-855 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.primary }}>
+                      <div className="w-12 h-14 rounded-full bg-stone-900 border border-stone-850 flex items-center justify-center p-1" style={{ borderColor: currentThemeObj.primary }}>
                         <span dangerouslySetInnerHTML={{ __html: activeAvatarObj.icon_svg }} className="w-9 h-9" />
                       </div>
                       <span className="text-lg animate-pulse text-[#06b6d4]">⚡</span>
@@ -896,7 +897,7 @@ export default function LudusCloudGameHub() {
               className="flex-1 scrollable-y w-full px-4 py-4 space-y-5 pb-24 z-10"
               style={{ paddingTop: isHeaderExpanded ? '1rem' : 'calc(env(safe-area-inset-top) + 2rem)' }}
             >
-              <div className="cyber-card rounded-[28px] p-5 border border-stone-850 space-y-5">
+              <div className="cyber-card rounded-[28px] p-5 border border-stone-855 space-y-5">
                 
                 {/* Avatar select */}
                 <div className="text-center space-y-2">
@@ -1061,7 +1062,7 @@ export default function LudusCloudGameHub() {
                     <p className="text-4xl text-stone-700">💾</p>
                     <div>
                       <h4 className="font-extrabold text-sm">Sin descargas aún</h4>
-                      <p className="text-xs text-stone-500 max-w-[200px] mx-auto mt-1 leading-normal">
+                      <p className="text-xs text-stone-500 max-w-[200px] mx-auto mt-1 leading-normal text-stone-400">
                         Descarga tus juegos favoritos del catálogo en la portada del Hub.
                       </p>
                     </div>
@@ -1253,7 +1254,7 @@ export default function LudusCloudGameHub() {
                 </div>
 
                 {peerConnectionError && (
-                  <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-2xl text-left">
+                  <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-2xl text-left font-sans">
                     <p className="text-[9px] text-red-400 font-bold leading-normal">{peerConnectionError}</p>
                   </div>
                 )}
@@ -1345,11 +1346,11 @@ export default function LudusCloudGameHub() {
                   Para darte una experiencia de consola de juegos inmersiva de pantalla completa en tu móvil, **hemos guardado la barra de perfil de arriba por defecto**.
                 </p>
                 <div className="p-3 bg-stone-950/80 border border-stone-900 rounded-2xl text-[10px] text-left leading-normal space-y-1.5 font-sans">
-                  <p className="text-cyan-400 font-black flex items-center gap-1.5">
+                  <p className="text-cyan-400 font-black flex items-center gap-1.5 font-mono">
                     <Sliders className="w-3.5 h-3.5 shrink-0" /> ¿Cómo mostrar / ocultar el menú?
                   </p>
                   <p className="text-stone-400 font-medium">
-                    Toca en la pestaña flotante de arriba que dice **"Mostrar Panel"** para desplegar el perfil y tu ID en cualquier momento, y presiona **"Ocultar Panel"** para guardarlo.
+                    Toca en la pestaña flotante de abajo que dice **"Mostrar Panel"** para desplegar el perfil y tu ID en cualquier momento, y presiona **"Ocultar Panel"** para guardarlo.
                   </p>
                 </div>
               </div>
@@ -1386,7 +1387,7 @@ export default function LudusCloudGameHub() {
                 <button
                   key={tab.id}
                   onClick={() => { playBeep(520, 0.05); setActiveScreen(tab.id); }}
-                  className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all"
+                  className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all font-mono"
                   style={{ color: isActive ? currentThemeObj.primary : '#a8a29e' }}
                 >
                   <Icon className={`w-5 h-5 ${isActive ? 'scale-110' : ''}`} style={{ filter: isActive ? `drop-shadow(0 0 5px ${currentThemeObj.primary}80)` : 'none' }} />
@@ -1574,7 +1575,7 @@ function PongGame({ peerConnected, peerGamerTag, soundsEnabled }: {
   }, [peerConnected]);
 
   return (
-    <div className="w-full h-full max-w-xl max-h-[75vh] flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions">
+    <div className="w-full h-full max-w-xl max-h-[75vh] flex flex-col justify-center items-center px-4 space-y-3.5 no-touch-actions font-mono">
       <div className="flex justify-between w-full font-mono text-[10px] font-black tracking-widest text-[#06b6d4]">
         <div>
           <p>PLAYER (TÚ)</p>
